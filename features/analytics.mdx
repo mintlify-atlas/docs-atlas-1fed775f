@@ -1,0 +1,309 @@
+---
+title: Analytics
+description: Comprehensive analytics dashboard with revenue tracking, ticket sales metrics, and workspace statistics
+---
+
+EventPalour provides powerful analytics to help organizers track event performance, monitor revenue, and understand attendee behavior.
+
+## Dashboard Metrics
+
+The analytics dashboard displays key metrics for workspace performance:
+
+### Revenue Analytics
+
+- **Total Revenue**: Cumulative revenue across all events
+- **Monthly Revenue**: Revenue breakdown by month
+- **Revenue Growth**: Month-over-month growth percentage
+- **Revenue Trends**: Visual charts showing revenue patterns
+
+### Ticket Sales Analytics
+
+- **Total Tickets Sold**: Count of all paid tickets sold
+- **Total Registrations**: Count of free event registrations
+- **Monthly Sales**: Ticket sales breakdown by month
+- **Sales Growth**: Month-over-month ticket sales growth
+
+### Event Metrics
+
+- **Total Events**: Number of events created
+- **Active Events**: Currently live events
+- **Upcoming Events**: Scheduled future events
+- **Past Events**: Completed events
+
+## Analytics Components
+
+The analytics page uses streaming components for optimal performance:
+
+```typescript /home/daytona/workspace/source/app/workspace/[workspaceId]/analytics/page.tsx:19-38
+const getCachedRevenueData = cache(async (workspaceId: string) => {
+  const [revenueData, stats] = await Promise.all([
+    getWorkspaceMonthlyRevenue(workspaceId, 12),
+    getWorkspaceDashboardStats(workspaceId),
+  ]);
+
+  // Calculate growth percentage for revenue
+  const revenueGrowth =
+    revenueData.length >= 2
+      ? ((revenueData[revenueData.length - 1]?.revenue ?? 0) -
+          (revenueData[revenueData.length - 2]?.revenue ?? 0)) /
+        (revenueData[revenueData.length - 2]?.revenue || 1)
+      : 0;
+
+  return {
+    revenueData,
+    totalRevenue: stats.totalRevenue,
+    growthPercentage: revenueGrowth * 100,
+  };
+});
+```
+
+## Visualization Components
+
+### Revenue Chart
+
+Displays monthly revenue trends with growth indicators:
+
+```typescript /home/daytona/workspace/source/app/workspace/[workspaceId]/analytics/page.tsx:70-81
+async function RevenueChart({ workspaceId }: { workspaceId: string }) {
+  const { revenueData, totalRevenue, growthPercentage } =
+    await getCachedRevenueData(workspaceId);
+
+  return (
+    <ClippedAreaChart
+      data={revenueData}
+      totalRevenue={totalRevenue}
+      growthPercentage={growthPercentage}
+    />
+  );
+}
+```
+
+### Ticket Sales Chart
+
+Shows ticket sales and registration trends:
+
+```typescript /home/daytona/workspace/source/app/workspace/[workspaceId]/analytics/page.tsx:84-96
+async function TicketSalesChart({ workspaceId }: { workspaceId: string }) {
+  const { ticketData, totalTickets, totalRegistrations, growthPercentage } =
+    await getCachedTicketData(workspaceId);
+
+  return (
+    <GlowingLineChart
+      data={ticketData}
+      totalTickets={totalTickets}
+      totalRegistrations={totalRegistrations}
+      growthPercentage={growthPercentage}
+    />
+  );
+}
+```
+
+## Permission Requirements
+
+Analytics access requires at least **Moderator** role:
+
+```typescript /home/daytona/workspace/source/app/workspace/[workspaceId]/analytics/page.tsx:128-143
+const { hasAccess, workspace, workspaceRole } = await checkWorkspaceRole(
+  workspaceId,
+  WorkspaceRole.MODERATOR,
+);
+
+if (!hasAccess || !workspace || !workspaceRole) {
+  return (
+    <PermissionDenied
+      title="Analytics Access Restricted"
+      message="You need at least Moderator permissions to view workspace analytics."
+      requiredRole="Moderator or Admin"
+    />
+  );
+}
+```
+
+## Workspace Statistics
+
+Comprehensive statistics available for workspace owners:
+
+<Steps>
+  <Step title="Revenue Metrics">
+    Track total revenue, platform fees, and organizer earnings.
+  </Step>
+  
+  <Step title="Ticket Metrics">
+    Monitor ticket sales, registrations, and conversion rates.
+  </Step>
+  
+  <Step title="Event Metrics">
+    View event counts by status, type, and time period.
+  </Step>
+  
+  <Step title="Attendee Metrics">
+    Analyze attendee demographics and behavior patterns.
+  </Step>
+</Steps>
+
+## Performance Optimization
+
+The analytics dashboard uses several optimization techniques:
+
+### React Cache
+
+Data fetching functions are cached to prevent duplicate requests:
+
+```typescript
+const getCachedRevenueData = cache(async (workspaceId: string) => {
+  // Data fetching logic
+});
+```
+
+### Streaming Components
+
+Charts render independently without blocking:
+
+```typescript /home/daytona/workspace/source/app/workspace/[workspaceId]/analytics/page.tsx:103-115
+function AnalyticsCharts({ workspaceId }: { workspaceId: string }) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Each chart streams independently - no blocking */}
+      <Suspense fallback={null}>
+        <RevenueChart workspaceId={workspaceId} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <TicketSalesChart workspaceId={workspaceId} />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+### Partial Prerendering (PPR)
+
+Static content is prerendered while dynamic data streams in:
+
+```typescript /home/daytona/workspace/source/app/workspace/[workspaceId]/analytics/page.tsx:146-164
+return (
+  <div className="space-y-6">
+    {/* Static content - automatically prerendered */}
+    <Breadcrumbs items={[...]} />
+    <div>
+      <h2 className="text-3xl font-bold">Analytics</h2>
+      <p className="text-muted-foreground">
+        View analytics for {workspace.name}
+      </p>
+    </div>
+
+    {/* Dynamic content - streams in without blocking */}
+    <AnalyticsCharts workspaceId={workspaceId} />
+  </div>
+);
+```
+
+## Time Periods
+
+Analytics data can be viewed for different time periods:
+
+- **Last 7 days**: Recent activity snapshot
+- **Last 30 days**: Monthly performance
+- **Last 90 days**: Quarterly trends
+- **Last 12 months**: Annual overview
+- **All time**: Complete historical data
+
+## Metrics Breakdown
+
+### Revenue Metrics
+
+<CardGroup cols={2}>
+  <Card title="Gross Revenue" icon="dollar-sign">
+    Total amount paid by attendees before fees.
+  </Card>
+  
+  <Card title="Platform Fee" icon="percent">
+    EventPalour's commission on ticket sales.
+  </Card>
+  
+  <Card title="Provider Fee" icon="credit-card">
+    Payment processor fees (Paystack, etc.).
+  </Card>
+  
+  <Card title="Net Revenue" icon="coins">
+    Amount organizer receives after all fees.
+  </Card>
+</CardGroup>
+
+### Ticket Metrics
+
+<CardGroup cols={2}>
+  <Card title="Tickets Sold" icon="ticket">
+    Number of paid tickets purchased.
+  </Card>
+  
+  <Card title="Registrations" icon="user-plus">
+    Number of free event registrations.
+  </Card>
+  
+  <Card title="Conversion Rate" icon="chart-line">
+    Percentage of visitors who purchase tickets.
+  </Card>
+  
+  <Card title="Average Order" icon="calculator">
+    Average number of tickets per transaction.
+  </Card>
+</CardGroup>
+
+## Admin Metrics
+
+Platform administrators have access to additional metrics:
+
+- **Total Users**: Platform-wide user count
+- **Total Workspaces**: Number of registered workspaces
+- **Total Events**: All events across the platform
+- **Platform Revenue**: Total commission earned
+- **Growth Metrics**: User and event growth rates
+
+## Exporting Data
+
+<Note>
+  Data export functionality allows organizers to download analytics data in CSV format for further analysis.
+</Note>
+
+## Real-Time Updates
+
+Analytics data is updated in real-time as:
+
+- Tickets are purchased
+- Payments are completed
+- Events are created or updated
+- Users register for events
+
+## Dashboard Access
+
+Navigate to the analytics dashboard:
+
+```
+/workspace/{workspaceId}/analytics
+```
+
+Only users with **Moderator** or **Admin** roles can access this page.
+
+## Best Practices
+
+<Steps>
+  <Step title="Monitor Trends">
+    Regularly review monthly trends to identify patterns.
+  </Step>
+  
+  <Step title="Compare Periods">
+    Compare current performance to previous periods.
+  </Step>
+  
+  <Step title="Track Growth">
+    Monitor growth percentages to measure success.
+  </Step>
+  
+  <Step title="Optimize Pricing">
+    Use revenue data to optimize ticket pricing.
+  </Step>
+  
+  <Step title="Plan Capacity">
+    Use attendance data to plan event capacity.
+  </Step>
+</Steps>

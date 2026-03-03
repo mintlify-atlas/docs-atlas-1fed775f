@@ -1,0 +1,441 @@
+---
+title: 'Billing & Revenue'
+description: 'Manage workspace billing, track revenue from ticket sales, and request withdrawals'
+icon: 'credit-card'
+---
+
+The billing dashboard provides comprehensive revenue tracking, transaction management, and withdrawal capabilities for your workspace. All revenue from ticket sales across workspace events flows into a unified billing system.
+
+## Access Requirements
+
+<Warning>
+  **Minimum Role**: Admin
+  
+  Only workspace admins and owners can access billing information. This ensures financial data security and proper revenue management.
+</Warning>
+
+## Billing Overview
+
+The overview dashboard displays key financial metrics:
+
+<CardGroup cols={2}>
+  <Card title="Total Revenue" icon="money-bill">
+    All-time revenue from ticket sales across all workspace events.
+  </Card>
+  <Card title="Your Earnings" icon="chart-line">
+    Net earnings after platform fees and payment provider fees.
+  </Card>
+  <Card title="Platform Fees" icon="receipt">
+    5% commission charged by EventPalour on all ticket sales.
+  </Card>
+  <Card title="Transactions" icon="file-invoice">
+    Total transaction count with pending and failed breakdowns.
+  </Card>
+</CardGroup>
+
+### Revenue Calculation
+
+```typescript
+Total Revenue = Sum of all completed ticket sales
+Platform Fee = Total Revenue × 5%
+Provider Fee = Charged by payment gateway (varies)
+Your Earnings = Total Revenue - Platform Fee - Provider Fee
+```
+
+## Billing Tabs
+
+### Overview Tab
+
+View high-level financial metrics and trends.
+
+#### Statistics Cards
+
+- **Total Revenue**: Gross revenue from all ticket sales
+- **Your Earnings**: Net revenue available for withdrawal
+- **Platform Fees**: 5% commission on all sales
+- **Transactions**: Total count with status breakdown
+- **Available Balance**: Funds ready for withdrawal
+- **Total Withdrawn**: Cumulative withdrawal amount
+- **Pending Withdrawals**: Withdrawals being processed
+
+#### Monthly Earnings Chart
+
+View earnings breakdown for the last 12 months:
+- Revenue per month
+- Platform fees per month
+- Net earnings per month
+
+Use this data to:
+- Track growth trends
+- Plan event schedules
+- Forecast revenue
+- Identify peak seasons
+
+### Transactions Tab
+
+Detailed view of all payment transactions.
+
+#### Transaction Information
+
+Each transaction displays:
+- **Event Title**: Event name
+- **Buyer Email**: Purchaser email address
+- **Amount**: Total payment amount
+- **Earnings**: Your share after fees
+- **Status**: Payment status badge
+- **Reference**: Provider reference number
+- **Date**: Transaction timestamp
+- **Failure Reason**: If transaction failed
+
+#### Payment Statuses
+
+<AccordionGroup>
+  <Accordion title="Completed">
+    Payment successfully processed. Funds added to available balance.
+  </Accordion>
+
+  <Accordion title="Pending">
+    Payment being processed by payment provider. Usually completes within minutes.
+  </Accordion>
+
+  <Accordion title="Failed">
+    Payment failed. Check failure reason for details. Buyer was not charged.
+  </Accordion>
+
+  <Accordion title="Refunded">
+    Payment refunded to buyer. A 10% penalty applies to refunded amount.
+  </Accordion>
+</AccordionGroup>
+
+#### Refund Processing
+
+<Steps>
+  <Step title="Locate Transaction">
+    Find the completed transaction you want to refund in the Transactions tab.
+  </Step>
+
+  <Step title="Click Refund">
+    Click the **Refund** button next to the transaction.
+  </Step>
+
+  <Step title="Review Refund Amount">
+    The refund dialog shows:
+    - Original amount
+    - 10% penalty deduction
+    - Final refund amount to buyer
+
+    <Warning>
+      A 10% penalty is deducted from all refunds to cover processing costs and prevent abuse.
+    </Warning>
+  </Step>
+
+  <Step title="Provide Reason (Optional)">
+    Enter a refund reason for your records and customer communication.
+  </Step>
+
+  <Step title="Confirm Refund">
+    Click **Confirm Refund** to process. The refund:
+    - Returns funds to buyer minus 10% penalty
+    - Deducts from your available balance
+    - Marks tickets as cancelled
+    - Updates transaction status to "Refunded"
+  </Step>
+</Steps>
+
+### Earnings Tab
+
+Detailed breakdown of revenue and fees.
+
+#### Earnings Breakdown
+
+```
+Total Revenue:           KES 100,000
+- Platform Fees (5%):    KES   5,000
+- Provider Fees:         KES   2,000
+= Your Earnings:         KES  93,000
+```
+
+This view helps you:
+- Understand fee structure
+- Calculate net profit
+- Plan pricing strategies
+- Optimize revenue
+
+### Withdrawals Tab
+
+Request and manage fund withdrawals to your bank account or mobile money.
+
+<Info>
+  **KYC Required**: You must complete KYC (Know Your Customer) verification before requesting withdrawals. This ensures secure and compliant fund transfers.
+</Info>
+
+#### Withdrawal Requirements
+
+<CardGroup cols={2}>
+  <Card title="Minimum Amount" icon="coins">
+    KES 500 (or USD 500 equivalent)
+  </Card>
+  <Card title="KYC Verification" icon="shield-check">
+    Approved KYC status required
+  </Card>
+  <Card title="Available Balance" icon="wallet">
+    Sufficient funds in available balance
+  </Card>
+  <Card title="Valid Account" icon="building-columns">
+    Bank account or mobile money number
+  </Card>
+</CardGroup>
+
+#### Requesting a Withdrawal
+
+<Steps>
+  <Step title="Complete KYC Verification">
+    Before your first withdrawal, complete KYC verification:
+    
+    1. Navigate to **Workspace** > **KYC**
+    2. Submit required documents
+    3. Wait for approval (usually 1-3 business days)
+
+    <Card title="KYC Documents" icon="file-certificate">
+      Required documents may include:
+      - National ID or Passport
+      - Business Registration (if applicable)
+      - Tax ID (KRA PIN for Kenya)
+    </Card>
+  </Step>
+
+  <Step title="Navigate to Withdrawals">
+    Click the **Withdrawals** tab in the billing dashboard.
+  </Step>
+
+  <Step title="Enter Withdrawal Details">
+    Fill out the withdrawal form:
+    
+    - **Amount**: Enter amount (minimum 500)
+    - **Account Number**: Bank account or mobile money number
+    - **Account Name**: Account holder name
+    - **Bank Name**: Bank name (optional, for bank transfers)
+
+    <Note>
+      Ensure account details match your KYC information for faster processing.
+    </Note>
+  </Step>
+
+  <Step title="Review and Submit">
+    Review your withdrawal request:
+    - Withdrawal amount
+    - Processing fee (if applicable)
+    - Net amount you'll receive
+    
+    Click **Request Withdrawal** to submit.
+  </Step>
+
+  <Step title="Wait for Processing">
+    Withdrawal requests are typically processed within:
+    - Mobile Money: 1-3 business days
+    - Bank Transfer: 3-5 business days
+    
+    You'll receive confirmation once processed.
+  </Step>
+</Steps>
+
+#### Withdrawal Status
+
+Track your withdrawals:
+- **Pending**: Request submitted, awaiting processing
+- **Processing**: Being transferred to your account
+- **Completed**: Funds successfully transferred
+- **Failed**: Transfer failed (funds returned to balance)
+
+## Fee Structure
+
+### Platform Fee
+
+<Info>
+  EventPalour charges a **5% commission** on all ticket sales. This fee covers:
+  - Platform maintenance and hosting
+  - Payment processing infrastructure
+  - Customer support
+  - Security and fraud prevention
+  - Feature development
+</Info>
+
+### Payment Provider Fees
+
+Payment gateway fees vary by provider:
+- **M-Pesa**: ~2-3% of transaction
+- **Card Payments**: ~2.5-3.5% of transaction
+- **Bank Transfer**: Flat fee or percentage
+
+These fees are automatically deducted before calculating your earnings.
+
+### Refund Penalty
+
+<Warning>
+  A **10% penalty** applies to all refunds to:
+  - Cover payment processing costs
+  - Prevent refund abuse
+  - Compensate for transaction fees
+</Warning>
+
+Example:
+```
+Original Payment: KES 1,000
+Refund Penalty:   KES   100 (10%)
+Buyer Receives:   KES   900
+```
+
+## Billing Data Structure
+
+### Payment Record
+
+```typescript
+{
+  id: string;
+  providerReference: string;    // Payment gateway reference
+  provider: string;             // Payment method used
+  status: PaymentStatus;        // Transaction status
+  amount: string;               // Total amount
+  currency: string;             // KES or USD
+  platformFee: string;          // 5% platform fee
+  providerFee: string;          // Gateway fee
+  organizerShare: string;       // Your earnings
+  createdAt: Date;
+  completedAt: Date | null;
+  failureReason: string | null;
+  eventTitle: string;
+  eventId: string;
+  buyerEmail: string;
+  buyerId: string;
+  ticketPrice: string;
+  metadata: {
+    tickets?: Array<{
+      ticketId: string;
+      quantity: number;
+      price: string;
+    }>
+  } | null;
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Complete KYC Early">
+    Submit KYC verification before your first event to ensure smooth withdrawals when revenue starts flowing.
+  </Accordion>
+
+  <Accordion title="Monitor Transactions Regularly">
+    Review transactions frequently to:
+    - Identify and resolve failed payments
+    - Track revenue trends
+    - Reconcile ticket sales
+    - Respond to buyer inquiries
+  </Accordion>
+
+  <Accordion title="Maintain Sufficient Balance">
+    Keep enough available balance to handle potential refunds without withdrawal delays.
+  </Accordion>
+
+  <Accordion title="Document Refunds">
+    Always provide a reason when processing refunds for internal records and customer communication.
+  </Accordion>
+
+  <Accordion title="Plan Withdrawals">
+    Schedule withdrawals strategically:
+    - After events complete
+    - Before major expenses
+    - Considering processing times
+  </Accordion>
+
+  <Accordion title="Accurate Account Details">
+    Double-check withdrawal account information to prevent failed transfers and delays.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Cannot access billing">
+    Ensure you have Admin or Owner role. Contact your workspace owner to upgrade your role if needed.
+  </Accordion>
+
+  <Accordion title="Withdrawal blocked - KYC required">
+    Complete KYC verification:
+    1. Go to **Workspace** > **KYC**
+    2. Submit required documents
+    3. Wait for approval
+    4. Retry withdrawal after approval
+  </Accordion>
+
+  <Accordion title="Withdrawal failed">
+    Common reasons:
+    - Incorrect account details
+    - Insufficient balance
+    - Bank/provider issues
+    - KYC information mismatch
+    
+    Verify account details and retry. Contact support if issue persists.
+  </Accordion>
+
+  <Accordion title="Transaction shows as pending">
+    Most payments complete within minutes. If a transaction is pending for over 1 hour:
+    - Check payment provider status
+    - Verify buyer completed payment
+    - Contact support for investigation
+  </Accordion>
+
+  <Accordion title="Refund not processed">
+    Ensure:
+    - Transaction status is "Completed"
+    - Sufficient balance available
+    - You confirmed the refund dialog
+    
+    Check transaction history for refund status.
+  </Accordion>
+
+  <Accordion title="Balance doesn't match expectations">
+    Remember that available balance excludes:
+    - Pending transactions
+    - Pending withdrawals
+    - Platform fees (5%)
+    - Payment provider fees
+  </Accordion>
+</AccordionGroup>
+
+## Revenue Optimization Tips
+
+<CardGroup cols={2}>
+  <Card title="Strategic Pricing" icon="tag">
+    Factor in the 5% platform fee and payment fees when setting ticket prices to maintain target profit margins.
+  </Card>
+
+  <Card title="Early Bird Discounts" icon="clock">
+    Offer early bird pricing to generate cash flow early and gauge event interest.
+  </Card>
+
+  <Card title="Tiered Tickets" icon="layer-group">
+    Create multiple ticket tiers (VIP, Regular, Early Bird) to maximize revenue from different audience segments.
+  </Card>
+
+  <Card title="Minimize Refunds" icon="shield">
+    Set clear event policies and communicate effectively to reduce refund requests and 10% penalties.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Complete KYC" icon="id-card" href="/workspace/kyc">
+    Submit verification to enable withdrawals
+  </Card>
+  <Card title="Manage Team" icon="users" href="/workspace/team-collaboration">
+    Add team members to help manage events
+  </Card>
+  <Card title="Configure Settings" icon="gear" href="/workspace/settings">
+    Customize workspace profile
+  </Card>
+  <Card title="Create Events" icon="calendar-plus">
+    Start organizing and selling tickets
+  </Card>
+</CardGroup>

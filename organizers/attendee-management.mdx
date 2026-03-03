@@ -1,0 +1,773 @@
+---
+title: Attendee Management
+description: Manage event registrations, ticket purchases, check-ins, and attendee communications
+---
+
+Effective attendee management is crucial for event success. This guide covers how to track registrations, manage ticket purchases, handle check-ins, and communicate with your attendees.
+
+## Overview
+
+EventPalour provides two types of event attendance:
+
+### Free Events
+Attendees register through **event registrations**:
+- No payment required
+- Direct registration process
+- Stored in `event_registrations` table
+- Includes check-in timestamp tracking
+
+### Paid Events
+Attendees purchase tickets through **purchased tickets**:
+- Payment via Paystack required
+- Ticket types with pricing
+- Stored in `purchased_tickets` table
+- Supports transfers, refunds, and scanning
+
+## Accessing Attendee Data
+
+Navigate to your attendee list:
+
+<Steps>
+  <Step title="Go to Manage Events">
+    From your workspace dashboard:
+    - Click **Manage Events** in the sidebar
+    - Or navigate to `/workspace/{workspaceId}/manage-events`
+  </Step>
+
+  <Step title="Select Your Event">
+    Click on the event you want to manage.
+    
+    You'll see:
+    - Event details and status
+    - Ticket types and sales (for paid events)
+    - Attendee list and registrations
+  </Step>
+
+  <Step title="View Attendees Tab">
+    Click the **Attendees** or **Registrations** tab.
+    
+    **For Paid Events:**
+    - View purchased tickets
+    - Filter by ticket type
+    - See payment status
+    - Check scan status
+    
+    **For Free Events:**
+    - View all registrations
+    - See registration timestamps
+    - Track check-ins
+  </Step>
+</Steps>
+
+## Registration Management (Free Events)
+
+### How Free Event Registration Works
+
+When an attendee registers for a free event:
+
+1. User browses events and finds your event
+2. Clicks "Register" button
+3. System creates `event_registration` record
+4. Confirmation email sent to attendee
+5. Registration appears in your attendee list
+
+### Event Registration Data
+
+Each registration includes:
+
+```typescript
+{
+  id: string,              // Unique registration ID
+  user_id: string,         // Attendee's user ID
+  event_id: string,        // Your event ID
+  registered_at: Date,     // When they registered
+  checked_in: Date | null, // Check-in timestamp (null until checked in)
+  created_at: Date,
+  updated_at: Date
+}
+```
+
+### Viewing Registrations
+
+Your registration list shows:
+- Attendee name and email
+- Registration date/time
+- Check-in status
+- Actions (check in, contact, remove)
+
+**Filtering:**
+- All registrations
+- Checked in only
+- Not checked in
+- By registration date
+
+**Exporting:**
+- Export to CSV for external tools
+- Includes all attendee details
+- Useful for:
+  - Email campaigns
+  - Name badge printing
+  - Certificate generation
+  - Post-event follow-up
+
+### Managing Registrations
+
+**Check In Attendee:**
+```
+1. Find attendee in list
+2. Click "Check In" button
+3. System updates checked_in timestamp
+4. Status changes to "Checked In"
+```
+
+Useful for:
+- Tracking actual attendance vs registrations
+- Controlling access at venue
+- Collecting attendance data
+
+**Remove Registration:**
+```
+1. Find attendee in list
+2. Click "Remove" button
+3. Confirm deletion
+4. Registration is permanently removed
+```
+
+Use cases:
+- Spam registrations
+- Duplicate registrations
+- Policy violations
+
+<Note>
+  Registrations have a unique constraint on `(user_id, event_id)`, so each user can only register once per event.
+</Note>
+
+## Ticket Management (Paid Events)
+
+### Purchased Tickets Overview
+
+Each ticket purchase creates a `purchased_ticket` record:
+
+```typescript
+{
+  id: string,                  // Unique ticket ID
+  user_id: string,             // Purchaser's user ID
+  ticket_id: string,           // Ticket type ID
+  status: TicketStatus,        // Current ticket status
+  price: decimal,              // Price paid
+  quantity: number,            // Number of tickets
+  used: boolean,               // Whether ticket was scanned
+  used_at: Date | null,        // Scan timestamp
+  created_at: Date,            // Purchase timestamp
+  updated_at: Date
+}
+```
+
+### Ticket Statuses
+
+Tickets move through various statuses:
+
+**AVAILABLE**
+- Ticket type is available for purchase
+- Not yet purchased
+
+**RESERVED**
+- Temporarily held during checkout (5-15 minutes)
+- Payment in progress
+- Returns to available if payment fails or times out
+
+**SOLD**
+- Successfully purchased and paid
+- Most common status in your list
+- Ticket is active and valid
+
+**CANCELLED**
+- Ticket purchase was cancelled
+- Before or after purchase
+- Cannot be used
+
+**REFUNDED**
+- Payment was refunded
+- Ticket is invalidated
+- Cannot be used for entry
+
+**TRANSFERRED**
+- Ticket was transferred to another user
+- Original purchase record retained
+- New owner has active ticket
+
+**USED**
+- Ticket was scanned at event
+- Entry granted
+- `used_at` timestamp recorded
+
+**EXPIRED**
+- Event has passed
+- Ticket was not used
+- Automatically set post-event
+
+**ON_HOLD**
+- Administrative hold
+- Fraud prevention
+- Payment issues
+- Requires resolution before use
+
+### Viewing Purchased Tickets
+
+Your ticket list displays:
+
+| Column | Description |
+|--------|-------------|
+| **Ticket ID** | Unique identifier |
+| **Attendee** | Name and email |
+| **Ticket Type** | Which tier (Early Bird, VIP, etc.) |
+| **Quantity** | Number of tickets in purchase |
+| **Price** | Amount paid |
+| **Status** | Current status |
+| **Purchased** | Date/time of purchase |
+| **Used** | Whether scanned |
+| **Actions** | Available operations |
+
+**Filters:**
+- By ticket type
+- By status
+- By purchase date
+- Used vs unused
+- By attendee name/email
+
+**Sorting:**
+- By purchase date (newest/oldest)
+- By attendee name (A-Z)
+- By ticket type
+- By status
+
+### Ticket Operations
+
+<AccordionGroup>
+  <Accordion title="Scanning Tickets">
+    Mark tickets as used when attendees arrive:
+    
+    **Manual Scan:**
+    ```
+    1. Find ticket in list
+    2. Click "Mark as Used"
+    3. Confirm scan
+    4. Status updates to USED
+    5. used_at timestamp recorded
+    ```
+    
+    **QR Code Scan:**
+    - Each ticket has unique QR code
+    - Use mobile scanner app
+    - Scans automatically update status
+    - Prevents duplicate scans
+    
+    **Scan Data:**
+    ```typescript
+    {
+      purchased_ticket_id: string,
+      scanned_by_user_id: string | null,
+      scanned_at: Date
+    }
+    ```
+    
+    **Unique Constraint:**
+    - Each ticket can only be scanned once
+    - Duplicate scans are rejected
+    - Prevents ticket sharing/fraud
+  </Accordion>
+
+  <Accordion title="Processing Refunds">
+    Refund ticket purchases when requested:
+    
+    **Refund Process:**
+    <Steps>
+      <Step title="Receive Refund Request">
+        Attendee contacts you requesting refund.
+        
+        Verify:
+        - Event hasn't occurred yet
+        - Ticket hasn't been used
+        - Within refund policy window
+        - Valid reason (optional)
+      </Step>
+      
+      <Step title="Initiate Refund">
+        In attendee list:
+        ```
+        1. Find ticket purchase
+        2. Click "Refund" button
+        3. Confirm refund amount
+        4. Add refund reason (optional)
+        5. Submit refund
+        ```
+      </Step>
+      
+      <Step title="Process Payment">
+        System processes refund:
+        - Updates ticket status to REFUNDED
+        - Initiates payment reversal through Paystack
+        - Increases ticket availability
+        - Sends confirmation email
+      </Step>
+      
+      <Step title="Completion">
+        Refund completes:
+        - Funds return to attendee (5-10 business days)
+        - Ticket is invalidated
+        - Cannot be used for entry
+        - Availability restored for resale
+      </Step>
+    </Steps>
+    
+    **Refund Policy Best Practices:**
+    - Set clear refund deadlines (e.g., 7 days before event)
+    - Communicate policy on event page
+    - Consider partial refunds for late requests
+    - Track refund rates to improve future events
+  </Accordion>
+
+  <Accordion title="Transferring Tickets">
+    Allow attendees to transfer tickets to others:
+    
+    **Transfer Process:**
+    ```
+    1. Original purchaser requests transfer
+    2. Provides new attendee's email
+    3. You initiate transfer in system
+    4. New attendee receives transfer notification
+    5. New attendee accepts transfer
+    6. Ticket ownership updates
+    ```
+    
+    **Transfer Record:**
+    ```typescript
+    {
+      id: string,
+      purchased_ticket_id: string,  // The ticket being transferred
+      from_user_id: string,          // Original owner
+      to_user_id: string,            // New owner
+      transferred_at: Date
+    }
+    ```
+    
+    **Transfer Rules:**
+    - Ticket must be SOLD status
+    - Cannot transfer USED tickets
+    - Cannot transfer REFUNDED tickets
+    - Transfer history is retained
+    - New owner receives all ticket benefits
+    
+    **Use Cases:**
+    - Original purchaser can't attend
+    - Company transfers employee tickets
+    - Gift to another person
+  </Accordion>
+
+  <Accordion title="Placing Tickets On Hold">
+    Temporarily suspend tickets for:
+    
+    **Fraud Prevention:**
+    ```
+    1. Suspicious purchase patterns detected
+    2. Payment verification needed
+    3. Click "Place on Hold"
+    4. Add reason: "Payment verification"
+    5. Contact purchaser to verify
+    6. Release or refund based on verification
+    ```
+    
+    **Payment Issues:**
+    ```
+    1. Payment disputed/charged back
+    2. Place ticket on hold
+    3. Investigate with payment processor
+    4. Resolve or refund
+    ```
+    
+    **Policy Violations:**
+    ```
+    1. Ticket reselling detected
+    2. Terms of service violation
+    3. Place on hold
+    4. Contact purchaser
+    5. Resolve or cancel ticket
+    ```
+    
+    **Releasing Holds:**
+    ```
+    1. Issue resolved
+    2. Click "Release Hold"
+    3. Status returns to SOLD
+    4. Ticket becomes valid again
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Attendee Communication
+
+### Built-in Messaging
+
+Contact attendees directly from the platform:
+
+**Individual Messages:**
+```
+1. Go to attendee list
+2. Click on attendee name
+3. Click "Send Message"
+4. Compose message
+5. Send
+```
+
+Uses attendee's registered email.
+
+**Bulk Announcements:**
+```
+1. Go to event page
+2. Click "Send Announcement"
+3. Select recipients:
+   - All attendees
+   - Only registered (free events)
+   - Only purchased tickets (paid events)
+   - Specific ticket types
+4. Compose message
+5. Send to all
+```
+
+### Announcement Use Cases
+
+**Pre-Event:**
+- Event reminders (1 week, 1 day before)
+- Venue/parking information
+- Agenda updates
+- Speaker changes
+- What to bring
+
+**Event Day:**
+- Check-in location
+- Wi-Fi credentials
+- Session room assignments
+- Schedule updates
+- Emergency notifications
+
+**Post-Event:**
+- Thank you message
+- Feedback survey
+- Event photos/videos
+- Presentation slides
+- Certificate of attendance
+- Future event announcements
+
+### Email Best Practices
+
+<Tip>
+  **Effective Attendee Emails:**
+  
+  - **Clear Subject**: "Action Required: Event Tomorrow" vs "Update"
+  - **Scannable**: Use bullet points and headers
+  - **Actionable**: What should they do?
+  - **Mobile-Friendly**: Most open emails on mobile
+  - **Branded**: Include event logo and colors
+  - **Unsubscribe**: Respect communication preferences
+</Tip>
+
+## Check-In Management
+
+### Check-In Methods
+
+**Manual Check-In (Free Events):**
+```
+1. Attendee arrives at venue
+2. Staff finds attendee in list
+3. Clicks "Check In" button
+4. Attendee is marked as present
+```
+
+**QR Code Scanning (Paid Events):**
+```
+1. Attendee receives ticket email with QR code
+2. Shows QR code at entrance
+3. Staff scans with mobile device
+4. System validates ticket:
+   - Checks if SOLD status
+   - Ensures not already USED
+   - Verifies event match
+5. If valid:
+   - Updates to USED status
+   - Records scan timestamp
+   - Grants entry
+6. If invalid:
+   - Shows error message
+   - Prevents entry
+```
+
+### Check-In Station Setup
+
+**Requirements:**
+- Tablet or smartphone per check-in lane
+- Internet connection (for real-time validation)
+- Backup attendee list (printout for network issues)
+
+**Staffing:**
+- 1 station per 50 expected attendees
+- Example: 200 attendees = 4 check-in stations
+- Brief staff on:
+  - How to scan tickets
+  - Handling failed scans
+  - Manual backup process
+
+**Backup Process:**
+If internet fails:
+```
+1. Use printed attendee list
+2. Manually check off arrivals
+3. Update system when connection restored
+```
+
+### Check-In Analytics
+
+Track attendance patterns:
+
+**Metrics:**
+- Total registrations vs actual attendance
+- Check-in rate (% who actually attended)
+- Peak arrival times
+- Average check-in time per attendee
+
+**Example Report:**
+```yaml
+Event: Tech Summit 2026
+Registered: 250
+Checked In: 218
+Attendance Rate: 87.2%
+
+Peak Arrival:
+  Time: 8:30 AM - 9:00 AM
+  Count: 142 (65% of total)
+  
+Check-In Speed:
+  Average: 12 seconds per person
+  Peak Queue: 23 people at 8:45 AM
+```
+
+Use insights to:
+- Improve check-in process
+- Plan staffing for future events
+- Adjust registration limits (account for no-shows)
+- Schedule event start time appropriately
+
+## Data Export
+
+### Exporting Attendee Data
+
+Export data for external use:
+
+**CSV Export:**
+```
+1. Go to attendee list
+2. Click "Export" button
+3. Select format: CSV
+4. Choose fields:
+   - Name
+   - Email
+   - Ticket Type
+   - Purchase Date
+   - Check-In Status
+   - Custom fields
+5. Download file
+```
+
+**Use Cases:**
+- Import into email marketing tools
+- Generate name badges
+- Create certificates
+- Send follow-up campaigns
+- Analyze demographics
+- Report to sponsors
+
+### Privacy Compliance
+
+<Warning>
+  **Data Protection:**
+  
+  When exporting attendee data:
+  - Only export what you need
+  - Secure file storage
+  - Delete after use
+  - Comply with privacy policies
+  - Don't share with third parties without consent
+  - Follow GDPR/local data protection laws
+</Warning>
+
+## Analytics & Insights
+
+### Registration Metrics
+
+Track event performance:
+
+**Registration Trends:**
+```yaml
+Daily Registrations:
+  Day 1 (Announcement): 45
+  Week 1 Average: 12/day
+  Week 2 Average: 8/day
+  Final Week: 23/day (urgency spike)
+  Total: 250
+
+Source Analysis:
+  Email: 42%
+  Social Media: 31%
+  Direct: 18%
+  Referral: 9%
+```
+
+**Ticket Sales (Paid Events):**
+```yaml
+Revenue by Tier:
+  Early Bird: KES 120,000 (100 tickets @ KES 1,200)
+  Standard: KES 162,000 (90 tickets @ KES 1,800)
+  VIP: KES 87,500 (25 tickets @ KES 3,500)
+  Total Revenue: KES 369,500
+  
+Sales Timeline:
+  Early Bird Sold Out: Day 14
+  Standard 50% Sold: Day 21
+  VIP Sold Out: Day 28
+```
+
+### Attendee Demographics
+
+Understand your audience:
+
+- Registration by location (city/country)
+- Ticket tier distribution
+- Registration timing patterns
+- Attendance rate by tier
+
+Use insights for:
+- Future event planning
+- Marketing targeting
+- Pricing optimization
+- Sponsor reporting
+
+## Common Scenarios
+
+<AccordionGroup>
+  <Accordion title="No-Shows (Free Events)">
+    **Problem:** High registration, low actual attendance
+    
+    **Solutions:**
+    1. Send reminder emails (1 week, 1 day before)
+    2. Require confirmation 48 hours before
+    3. Implement waitlist for high-demand events
+    4. Over-register by 20-30% (expect no-shows)
+    5. Add small refundable deposit
+    
+    **Tracking:**
+    ```yaml
+    Event History:
+      Event 1 - Attendance Rate: 65%
+      Event 2 - Attendance Rate: 72% (added reminders)
+      Event 3 - Attendance Rate: 81% (added confirmation)
+    ```
+  </Accordion>
+
+  <Accordion title="Duplicate Ticket Purchases">
+    **Problem:** Same person bought multiple tickets accidentally
+    
+    **Resolution:**
+    ```
+    1. Identify duplicate purchases
+    2. Contact attendee to confirm
+    3. Refund duplicate ticket(s)
+    4. Update inventory
+    5. Send confirmation
+    ```
+    
+    **Prevention:**
+    - Limit quantity per email address
+    - Show clear purchase confirmation
+    - Add cart review step
+  </Accordion>
+
+  <Accordion title="Name Changes on Tickets">
+    **Problem:** Attendee name is incorrect
+    
+    **Process:**
+    ```
+    1. Attendee requests name correction
+    2. Verify identity (email, purchase details)
+    3. Update attendee record
+    4. Resend ticket with correct name
+    5. Note: Does NOT require refund/repurchase
+    ```
+    
+    **Ticket Transfer vs Name Change:**
+    - **Name Change**: Typo correction, no ownership change
+    - **Transfer**: Different person attending, ownership change
+  </Accordion>
+
+  <Accordion title="Lost Tickets">
+    **Problem:** Attendee can't find ticket email
+    
+    **Resolution:**
+    ```
+    1. Attendee contacts support
+    2. Verify identity (name, email, purchase date)
+    3. Resend ticket email
+    4. Or provide ticket ID for manual lookup
+    5. Check them in manually if needed
+    ```
+    
+    **Prevention:**
+    - Clear subject lines for ticket emails
+    - Option to download PDF ticket
+    - Save to mobile wallet (Apple/Google Pay)
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Regular Monitoring" icon="chart-line">
+    - Check registrations/sales daily
+    - Respond to inquiries within 24 hours
+    - Monitor ticket inventory
+    - Watch for fraudulent activity
+  </Card>
+  
+  <Card title="Clear Communication" icon="envelope">
+    - Send confirmation immediately
+    - Event reminders 1 week and 1 day before
+    - Include all essential details
+    - Provide contact method for questions
+  </Card>
+  
+  <Card title="Smooth Check-In" icon="qrcode">
+    - Test scanning system before event
+    - Have backup internet connection
+    - Print attendee list as backup
+    - Staff check-in stations adequately
+  </Card>
+  
+  <Card title="Post-Event Follow-Up" icon="users">
+    - Send thank you message
+    - Request feedback/reviews
+    - Share event photos/content
+    - Announce future events
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Creating Events" icon="calendar" href="/organizers/creating-events">
+    Set up your event to attract attendees
+  </Card>
+  <Card title="Ticket Types" icon="ticket" href="/organizers/ticket-types">
+    Configure tickets that attendees will purchase
+  </Card>
+  <Card title="Pricing Strategies" icon="chart-line" href="/organizers/pricing-strategies">
+    Optimize pricing to maximize attendance and revenue
+  </Card>
+</CardGroup>

@@ -1,0 +1,185 @@
+---
+title: Admin Panel Overview
+description: Comprehensive guide to EventPalour's platform administration panel and capabilities
+---
+
+## Introduction
+
+The EventPalour admin panel provides platform administrators with comprehensive tools to manage users, approve KYC applications, monitor revenue, track security events, and maintain platform health. Access to the admin panel is restricted to authorized administrators with specific permission levels.
+
+## Accessing the Admin Panel
+
+The admin panel is located at `/admin` and requires super admin authentication:
+
+```typescript
+// Authentication check (app/admin/layout.tsx:10)
+const { user } = await requireSuperAdmin();
+```
+
+Access is controlled through the `SUPER_ADMIN_EMAILS` environment variable, which supports a maximum of 3 authorized email addresses for security purposes.
+
+## Admin Dashboard
+
+The main dashboard at `/admin` provides a comprehensive overview of platform metrics and health.
+
+### Key Metrics
+
+The dashboard displays real-time platform statistics:
+
+**User Metrics**
+- Total users across the platform
+- New users (24 hours and 7 days)
+- Total organizers and paid organizers (KYC approved)
+- Returning users (last 30 days)
+
+**Event & Ticket Metrics**
+- Total events and active (upcoming) events
+- Total tickets sold across all events
+- Ticket sales growth (7-day comparison)
+
+**Revenue Metrics**
+- Platform revenue (total platform fees collected)
+- Total revenue (all completed payments)
+- Revenue growth percentage (7-day comparison)
+- Failed payments tracking
+
+**Administrative Metrics**
+- Pending KYC applications requiring review
+- Blue ticket verification requests
+- Recent security events (last 24 hours)
+
+### Revenue Charts
+
+The dashboard includes visual analytics:
+
+**Platform Revenue Chart** (dal/admin-metrics.ts:250-272)
+```typescript
+// 30-day daily revenue tracking
+const revenueChartData = [];
+for (let i = 29; i >= 0; i--) {
+  const dayStart = subDays(now, i + 1);
+  const dayEnd = subDays(now, i);
+  
+  const [dayRevenue] = await db
+    .select({ total: sum(tables.payments.platform_fee) })
+    .from(tables.payments)
+    .where(
+      and(
+        gte(tables.payments.created_at, dayStart),
+        lt(tables.payments.created_at, dayEnd),
+        eq(tables.payments.status, PaymentStatus.COMPLETED)
+      )
+    );
+}
+```
+
+**Tickets Sold Chart**
+- 30-day daily ticket sales visualization
+- Bar chart showing sales trends
+
+### Quick Actions
+
+Direct access to common administrative tasks:
+- Review KYC Applications (with pending count badge)
+- Manage Users
+- Security & Blocking
+- View Audit Logs
+
+### Recent Security Events
+
+Displays the last 10 security events from the audit log within the past 24 hours, showing:
+- Action performed
+- Admin email
+- IP address
+- Timestamp
+- Result (success/failure)
+
+## Admin Navigation
+
+The admin panel includes dedicated sections:
+
+1. **Dashboard** (`/admin`) - Overview and metrics
+2. **Users** (`/admin/users`) - User management
+3. **Organizers** (`/admin/organizers`) - Organizer accounts
+4. **KYC Management** (`/admin/kyc`) - Verification approval
+5. **Revenue & Finance** (`/admin/revenue`) - Financial tracking
+6. **Events** (`/admin/events`) - Event monitoring
+7. **Blue Tickets** (`/admin/blue-tickets`) - Verified badge requests
+8. **Security** (`/admin/security`) - User and IP blocking
+9. **Audit Logs** (`/admin/audit-logs`) - Complete action history
+10. **Settings** (`/admin/settings`) - Platform configuration
+11. **Feedback** (`/admin/feedback`) - User feedback management
+
+## Data Fetching
+
+Admin metrics are cached for performance:
+
+```typescript
+// app/admin/page.tsx:12-14
+async function SuperAdminDashboardContent({ user }: { user: User }) {
+  "use cache";
+  cacheLife("minutes");
+  
+  const metricsData = await getAdminDashboardMetrics();
+}
+```
+
+## Security Features
+
+### Audit Logging
+
+All admin actions are automatically logged:
+
+```typescript
+// app/admin/page.tsx:17
+await logSuperAdminAccess(user.id, "VIEWED_DASHBOARD", undefined, user.email);
+```
+
+### Access Control
+
+Each admin page requires super admin authentication:
+- Session validation
+- Email whitelist verification
+- Automatic redirects for unauthorized access
+
+### IP Tracking
+
+All administrative actions log IP addresses and user agents for security auditing.
+
+## Platform Health Monitoring
+
+### Growth Metrics
+
+The dashboard calculates 7-day growth rates:
+
+```typescript
+// dal/admin-metrics.ts:207-212
+const revenueGrowth =
+  revenuePrevious7d > 0
+    ? ((revenueLast7d - revenuePrevious7d) / revenuePrevious7d) * 100
+    : revenueLast7d > 0
+      ? 100
+      : 0;
+```
+
+### Failed Payment Tracking
+
+- Failed payments in last 24 hours
+- Total failed payments count
+- Visual alerts for payment issues
+
+## Best Practices
+
+1. **Regular Monitoring**: Check the dashboard daily for pending KYC applications and failed payments
+2. **Security Review**: Monitor the Recent Security Events section for unusual activity
+3. **Performance Tracking**: Use growth metrics to identify trends and issues
+4. **Quick Response**: Address pending KYC applications promptly to enable organizers
+5. **Audit Trail**: All actions are logged - use the audit logs for compliance and investigation
+
+## Related Documentation
+
+- [User Management](/admin/user-management)
+- [KYC Approval](/admin/kyc-approval)
+- [Revenue Management](/admin/revenue-management)
+- [Audit Logs](/admin/audit-logs)
+- [Security](/admin/security)

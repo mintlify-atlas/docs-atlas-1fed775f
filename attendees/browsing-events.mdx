@@ -1,0 +1,176 @@
+---
+title: Browsing Events
+description: Discover and explore public events on EventPalour
+---
+
+EventPalour makes it easy to discover events that match your interests. Browse through active events, filter by location and category, and find events happening near you.
+
+## Viewing Public Events
+
+All active events are publicly visible to both authenticated and unauthenticated users. Events are displayed with key information including:
+
+- Event title and description
+- Event dates (start and end)
+- Location details (venue, city, country)
+- Event type (online, physical, or hybrid)
+- Pricing information (free or paid)
+- Available tickets and pricing tiers
+- Event organizer workspace
+
+The system automatically shows only active events with upcoming dates, ordered by start date to help you find events happening soonest.
+
+## Event Discovery
+
+### Featured Events
+
+The homepage displays featured events limited to upcoming active events. These are curated to showcase:
+- Events starting soonest
+- Events with available tickets
+- High-quality event listings
+
+### Browse All Events
+
+Access the complete event catalog to explore all available events:
+
+```typescript
+// Events are fetched from dal/events.ts:310
+const events = await getAllActiveEvents();
+```
+
+Events include full details with workspace information, photo galleries, ticket types, and availability.
+
+## Filtering Events
+
+EventPalour provides powerful filtering options to help you find relevant events:
+
+### Filter by Time Period
+
+- **Upcoming**: All future events (default)
+- **This Week**: Events starting within the next 7 days
+- **All**: All active events regardless of date
+
+### Filter by Category
+
+Events are organized into categories such as:
+- Conferences
+- Workshops
+- Networking
+- Entertainment
+- Sports
+- And more
+
+Categories are dynamically generated from active events to ensure you only see categories with available events.
+
+### Filter by Location
+
+**By City**: Browse events in specific cities
+
+```typescript
+// Available cities from dal/events.ts:512
+const cities = await getAllEventCities();
+```
+
+**By Country**: Filter events by country to find international opportunities
+
+```typescript
+// Available countries from dal/events.ts:538
+const countries = await getAllEventCountries();
+```
+
+### Exclude Your Own Events
+
+If you're both an organizer and attendee, the system automatically excludes events from workspaces you own or are a member of when browsing public events. This ensures you see only events you might want to attend.
+
+## Pagination
+
+Event listings are paginated for optimal performance:
+
+- **Default page size**: 12 events per page
+- **Navigation**: Previous/Next page controls
+- **Total count**: Display of total available events
+- **Current page**: Visual indicator of current position
+
+The pagination system supports filtering, so you can navigate through filtered results while maintaining your selected filters.
+
+## Event Details
+
+Click any event to view comprehensive details:
+
+### Event Information
+- Full description
+- Complete schedule (start and end dates)
+- Recurring event indicators
+- Event type with specific details:
+  - **Online**: Virtual meeting link
+  - **Physical**: Venue and address details
+  - **Hybrid**: Both online and physical options
+
+### Organizer Details
+- Workspace name
+- Organizer information
+- Contact details
+
+### Ticket Information
+- All available ticket types
+- Pricing for each tier
+- Currency display
+- Availability status
+- Quantity remaining (if limited)
+
+### Photo Gallery
+Browse event photos to get a better sense of what to expect.
+
+### Related Events
+
+Discover similar events based on:
+- **Same location**: Events in the same city and country
+- **Same category**: Events in the same category
+- **Upcoming dates**: Priority given to events happening soon
+
+Up to 4 related events are displayed to help you discover more opportunities.
+
+## Free vs Paid Events
+
+Events are clearly marked with their pricing model:
+
+### Free Events
+- Marked with "Free" pricing badge
+- No payment required
+- Simple registration process
+- Instant confirmation
+
+### Paid Events
+- Display ticket prices and currency
+- Multiple ticket tiers available
+- Secure payment through Paystack
+- Ticket quantity and availability shown
+
+## Event Status
+
+Only active events are shown in public listings. Events can have the following statuses:
+
+- **Active**: Available for registration/purchase
+- **Inactive**: Not shown to attendees (draft mode)
+- **Canceled**: Event has been canceled
+- **Postponed**: Event has been rescheduled
+
+Canceled and postponed events may be visible on your "My Events" page if you already registered or purchased tickets.
+
+## Search and Discovery Tips
+
+1. **Use filters strategically**: Combine time, category, and location filters to narrow down results
+2. **Check related events**: Explore suggestions at the bottom of event pages
+3. **Act quickly**: Popular events with limited tickets sell out fast
+4. **Bookmark favorites**: Save event links to review later
+5. **Check availability**: Ticket quantities update in real-time
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Purchase Tickets" icon="ticket" href="/attendees/purchasing-tickets">
+    Learn how to purchase tickets for paid events
+  </Card>
+  <Card title="Manage Tickets" icon="list-check" href="/attendees/ticket-management">
+    View and manage your purchased tickets
+  </Card>
+</CardGroup>

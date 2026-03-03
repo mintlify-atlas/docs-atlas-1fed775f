@@ -1,0 +1,239 @@
+---
+title: Authentication
+description: Secure user authentication with multiple providers and two-factor authentication
+---
+
+EventPalour provides a robust authentication system with support for OAuth providers, email verification, two-factor authentication, and passkey support.
+
+## Authentication Methods
+
+### OAuth Providers
+
+Users can sign in using their existing accounts from supported OAuth providers:
+
+- **Google OAuth**: Sign in with Google accounts
+- **GitHub OAuth**: Sign in with GitHub accounts
+
+The OAuth integration uses the Arctic library for secure authentication flow:
+
+```typescript /home/daytona/workspace/source/lib/server/oauth.ts
+import { Google } from "arctic";
+
+export const google = new Google(
+  env.GOOGLE_CLIENT_ID,
+  env.GOOGLE_CLIENT_SECRET,
+  `${env_client.NEXT_PUBLIC_APP_URL}/api/auth/oauth/google/callback`,
+);
+```
+
+### Email and Password
+
+Traditional email and password authentication is supported with email verification for added security.
+
+## Session Management
+
+EventPalour uses secure session management with the following features:
+
+### Current Session
+
+Retrieve the current authenticated user:
+
+```typescript
+import { getCurrentUser } from "@/lib/actions/auth";
+
+const { user } = await getCurrentUser();
+```
+
+### Sign Out
+
+Securely invalidate user sessions:
+
+```typescript /home/daytona/workspace/source/lib/actions/auth.ts:110-119
+export async function signOut() {
+  const { session } = await getCurrentSession();
+
+  if (session) {
+    await invalidateSession(session.id);
+    await deleteSessionTokenCookie();
+  }
+
+  return { success: true };
+}
+```
+
+## Two-Factor Authentication (2FA)
+
+EventPalour supports two-factor authentication for enhanced account security. Users can enable 2FA to require a second verification step when signing in.
+
+<Note>
+  2FA significantly improves account security by requiring both something you know (password) and something you have (authentication device).
+</Note>
+
+## Passkey Support
+
+Passkey support (WebAuthn) is available for passwordless authentication, providing a modern and secure authentication experience.
+
+<Warning>
+  Passkey functionality is currently in development and may be disabled in production until fully tested.
+</Warning>
+
+## Authorization and Access Control
+
+### Platform Roles
+
+EventPalour uses platform-level roles to manage user permissions:
+
+- **Attendee**: Regular users who can browse and register for events
+- **Organizer**: Users who can create and manage workspaces and events
+- **Admin**: Platform administrators with full access
+
+### Workspace Roles
+
+Within workspaces, users can have different roles:
+
+- **Member**: Basic access to workspace features
+- **Moderator**: Can create events and manage speakers
+- **Admin**: Full workspace management capabilities
+- **Owner**: Workspace creator with all permissions
+
+### Role Hierarchy
+
+```typescript /home/daytona/workspace/source/lib/actions/auth.ts:86-96
+const roleHierarchy: Record<WorkspaceRole, number> = {
+  member: 1,
+  moderator: 2,
+  admin: 3,
+};
+
+if (roleHierarchy[role] < roleHierarchy[requiredRole]) {
+  redirect("/workspace/unauthorized");
+}
+
+return { user, workspace, workspaceRole: role };
+```
+
+## Protected Routes
+
+### Require Authentication
+
+Protect routes that require user authentication:
+
+```typescript
+import { requireAuth } from "@/lib/actions/auth";
+
+const { user } = await requireAuth();
+```
+
+### Require Platform Role
+
+Enforce platform-level role requirements:
+
+```typescript
+import { requireRole } from "@/lib/actions/auth";
+import { PlatformRole } from "@/lib/db/schema/enums";
+
+const { user } = await requireRole(PlatformRole.ORGANIZER);
+```
+
+### Require Workspace Access
+
+Validate workspace access permissions:
+
+```typescript /home/daytona/workspace/source/lib/actions/auth.ts:53-68
+export async function validateWorkspaceAccess(workspaceId: string) {
+  const { workspace, role, isOwner } =
+    await getWorkspaceWithAccess(workspaceId);
+  const user = await getUser();
+
+  if (!user) {
+    redirect("/auth/sign-in");
+  }
+
+  return {
+    user,
+    workspace,
+    workspaceRole: role,
+    isOwner,
+  };
+}
+```
+
+## User Workspaces
+
+Retrieve all workspaces a user has access to:
+
+```typescript /home/daytona/workspace/source/lib/actions/auth.ts:121-137
+export async function getUserWorkspacesList() {
+  const user = await getUser();
+
+  if (!user) {
+    return [];
+  }
+
+  const workspaces = await getUserWorkspaces(user.id);
+
+  return workspaces.map((w) => ({
+    id: w.workspace.id,
+    name: w.workspace.name,
+    imageUrl: w.workspace.imageUrl,
+    role: w.role,
+    isOwner: w.isOwner,
+  }));
+}
+```
+
+## Security Best Practices
+
+<Steps>
+  <Step title="Enable 2FA">
+    Always recommend users enable two-factor authentication for their accounts.
+  </Step>
+  
+  <Step title="Secure Sessions">
+    Sessions are automatically invalidated on sign out and use secure cookie storage.
+  </Step>
+  
+  <Step title="Email Verification">
+    Email addresses are verified to ensure account ownership.
+  </Step>
+  
+  <Step title="Role-Based Access">
+    All sensitive operations check user roles before allowing access.
+  </Step>
+</Steps>
+
+## Common Use Cases
+
+### Check if User is Workspace Owner
+
+```typescript
+const { isOwner } = await validateWorkspaceAccess(workspaceId);
+
+if (isOwner) {
+  // Owner-specific logic
+}
+```
+
+### Require Moderator Access
+
+```typescript
+const { workspaceRole } = await requireWorkspaceRole(
+  workspaceId,
+  WorkspaceRole.MODERATOR
+);
+```
+
+### Get Current Workspace for Organizers
+
+```typescript /home/daytona/workspace/source/lib/actions/auth.ts:99-108
+export async function getCurrentWorkspace() {
+  const user = await getUserWithRole(PlatformRole.ORGANIZER);
+  const workspace = await getUserOwnedWorkspace(user.id);
+
+  if (!workspace) {
+    redirect("/auth/onboarding/organizer");
+  }
+
+  return { user, workspace };
+}
+```

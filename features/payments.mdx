@@ -1,0 +1,454 @@
+---
+title: Payments
+description: Integrated payment processing with Paystack for Kenya (KES) and international (USD) transactions
+---
+
+EventPalour integrates with Paystack to provide secure payment processing for paid events with support for multiple currencies and automatic fee calculations.
+
+## Payment Providers
+
+EventPalour currently supports the following payment providers:
+
+- **Paystack**: Primary provider for KES (Kenya) and USD (International)
+- **M-Pesa**: Mobile money integration (coming soon)
+- **Stripe**: Alternative card payment processor (coming soon)
+
+## Supported Currencies
+
+The platform supports multiple currencies:
+
+- **KES** (Kenyan Shilling): Primary currency for Kenya-based events
+- **USD** (US Dollar): For international events
+- **NGN** (Nigerian Naira): Available through Paystack
+- **GHS** (Ghanaian Cedi): Available through Paystack
+- **ZAR** (South African Rand): Available through Paystack
+
+## Payment Flow
+
+<Steps>
+  <Step title="Initiate Payment">
+    User selects tickets and proceeds to checkout.
+  </Step>
+  
+  <Step title="Calculate Fees">
+    System calculates platform fee, provider fee, and organizer share.
+  </Step>
+  
+  <Step title="Create Payment Record">
+    Payment record is created with pending status.
+  </Step>
+  
+  <Step title="Redirect to Provider">
+    User is redirected to Paystack for secure payment.
+  </Step>
+  
+  <Step title="Verify Payment">
+    After payment, webhook verifies transaction with provider.
+  </Step>
+  
+  <Step title="Complete Purchase">
+    Create purchased tickets and send confirmation email.
+  </Step>
+</Steps>
+
+## Initiating Payments
+
+```typescript /home/daytona/workspace/source/app/actions/payments.ts:32-220
+export async function initiatePayment(data: {
+  eventId: string;
+  tickets: Array<{ ticketId: string; quantity: number }>;
+  provider?: "paystack" | "mpesa" | "stripe";
+}): Promise<{
+  success: boolean;
+  paymentId?: string;
+  reference?: string;
+  authorizationUrl?: string;
+  buyerEmail?: string;
+  totalAmount?: string;
+  currency?: string;
+  paystackPublicKey?: string;
+  error?: string;
+}> {
+  try {
+    const user = await getUser();
+    if (!user) {
+      return { success: false, error: "Authentication required" };
+    }
+
+    const validatedData = initiatePaymentSchema.parse(data);
+
+    // Get event details
+    const event = await getEventById(validatedData.eventId);
+    if (!event) {
+      return { success: false, error: "Event not found" };
+    }
+
+    // Validate tickets and calculate total
+    const ticketPurchases = [];
+    let totalAmount = 0;
+
+    for (const ticketSelection of validatedData.tickets) {
+      const ticket = await db.query.tickets.findFirst({
+        where: and(
+          eq(tables.tickets.id, ticketSelection.ticketId),
+          eq(tables.tickets.event_id, validatedData.eventId),
+        ),
+      });
+
+      if (!ticket) {
+        return { success: false, error: "Invalid ticket" };
+      }
+
+      // Check availability
+      if (ticket.availability_quantity !== null) {
+        const remaining = ticket.availability_quantity - totalPurchased;
+        if (ticketSelection.quantity > remaining) {
+          return {
+            success: false,
+            error: `Not enough tickets available. Only ${remaining} remaining.`,
+          };
+        }
+      }
+
+      const ticketPrice = Number.parseFloat(ticket.price);
+      totalAmount += ticketPrice * ticketSelection.quantity;
+
+      ticketPurchases.push({
+        ticket,
+        quantity: ticketSelection.quantity,
+        price: ticketPrice,
+        currency: ticket.currency,
+      });
+    }
+
+    // Get currency
+    const currency = ticketPurchases[0]?.currency || "KES";
+
+    // Calculate payment breakdown
+    const breakdown = calculatePaymentBreakdown(
+      totalAmount.toString(),
+      validatedData.provider,
+      currency as "KES" | "USD" | "NGN" | "GHS" | "ZAR",
+    );
+
+    // Generate unique payment reference
+    const paymentId = generateNanoId();
+    const reference = `EVT-${paymentId}`;
+
+    // Get payment provider
+    const paymentProvider = getDefaultPaymentProvider();
+
+    // Initialize payment with provider
+    const paymentInit = await paymentProvider.initializePayment({
+      amount: breakdown.totalAmount,
+      currency,
+      email: user.email,
+      reference,
+      metadata: {
+        paymentId,
+        eventId: event.id,
+        eventTitle: event.title,
+        tickets: ticketPurchases.map((t) => ({
+          ticketId: t.ticket.id,
+          quantity: t.quantity,
+          price: t.price,
+        })),
+      },
+    });
+
+    if (!paymentInit.success) {
+      return {
+        success: false,
+        error: paymentInit.error || "Failed to initialize payment",
+      };
+    }
+
+    // Create payment record in database
+    await db.insert(tables.payments).values({
+      id: paymentId,
+      provider: validatedData.provider as PaymentProvider,
+      provider_reference: paymentInit.reference,
+      status: PaymentStatus.PENDING,
+      ticket_id: ticketPurchases[0]?.ticket.id || "",
+      buyer_id: user.id,
+      amount: breakdown.totalAmount,
+      currency,
+      platform_fee: breakdown.platformFee,
+      provider_fee: breakdown.providerFee,
+      organizer_share: breakdown.organizerShare,
+    });
+
+    return {
+      success: true,
+      paymentId,
+      reference: paymentInit.reference,
+      authorizationUrl: paymentInit.authorizationUrl,
+      buyerEmail: user.email,
+      totalAmount: breakdown.totalAmount,
+      currency,
+      paystackPublicKey: env.PAYSTACK_PUBLIC_KEY,
+    };
+  }
+}
+```
+
+## Payment Fee Structure
+
+EventPalour uses a transparent fee structure:
+
+### Platform Fee
+- Percentage-based commission on ticket sales
+- Covers platform maintenance and support
+
+### Provider Fee
+- Payment processor fees (Paystack, M-Pesa, etc.)
+- Varies by provider and transaction amount
+
+### Organizer Share
+- Amount the event organizer receives
+- Calculated as: `Total Amount - Platform Fee - Provider Fee`
+
+## Payment Schema
+
+```typescript /home/daytona/workspace/source/lib/db/schema/payments.ts:56-102
+export const payments = pgTable("payments", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  
+  // Payment provider and reference
+  provider: payment_provider_enum("provider")
+    .notNull()
+    .default(PaymentProvider.PAYSTACK),
+  provider_reference: varchar("provider_reference", { length: 255 }).notNull(),
+  status: payment_status_enum("status")
+    .notNull()
+    .default(PaymentStatus.PENDING),
+
+  // Ticket and buyer information
+  ticket_id: varchar("ticket_id", { length: 16 }).notNull(),
+  buyer_id: varchar("buyer_id", { length: 16 }).notNull(),
+
+  // Amounts (all in decimal/numeric - NEVER use float)
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull(),
+
+  // Fee breakdown
+  platform_fee: numeric("platform_fee", { precision: 10, scale: 2 }).notNull(),
+  provider_fee: numeric("provider_fee", { precision: 10, scale: 2 }).notNull(),
+  organizer_share: numeric("organizer_share", { precision: 10, scale: 2 }).notNull(),
+
+  // Metadata
+  metadata: varchar("metadata", { length: 2000 }),
+  failure_reason: varchar("failure_reason", { length: 500 }),
+
+  // Timestamps
+  created_at: timestamp("created_at").notNull().defaultNow(),
+  updated_at: timestamp("updated_at").notNull().defaultNow(),
+  completed_at: timestamp("completed_at"),
+});
+```
+
+<Warning>
+  All monetary amounts use `numeric` type with precision 10, scale 2. Never use floating-point numbers for financial calculations to avoid rounding errors.
+</Warning>
+
+## Payment Verification
+
+```typescript /home/daytona/workspace/source/app/actions/payments.ts:226-370
+export async function verifyAndCompletePayment(
+  reference: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Find payment record
+    const payment = await db.query.payments.findFirst({
+      where: eq(tables.payments.provider_reference, reference),
+    });
+
+    if (!payment) {
+      return { success: false, error: "Payment not found" };
+    }
+
+    if (payment.status === PaymentStatus.COMPLETED) {
+      return { success: true }; // Already completed
+    }
+
+    // Get payment provider
+    const paymentProvider = getDefaultPaymentProvider();
+
+    // Verify payment with provider
+    const verification = await paymentProvider.verifyPayment(reference);
+
+    if (!verification.success) {
+      // Update payment status to failed
+      await db
+        .update(tables.payments)
+        .set({
+          status: PaymentStatus.FAILED,
+          failure_reason: verification.error,
+          updated_at: new Date(),
+        })
+        .where(eq(tables.payments.id, payment.id));
+
+      return {
+        success: false,
+        error: verification.error || "Payment verification failed",
+      };
+    }
+
+    // Update payment status
+    await db
+      .update(tables.payments)
+      .set({
+        status: verification.status,
+        completed_at:
+          verification.status === PaymentStatus.COMPLETED
+            ? new Date()
+            : undefined,
+        updated_at: new Date(),
+      })
+      .where(eq(tables.payments.id, payment.id));
+
+    // If payment is completed, create purchased tickets
+    if (verification.status === PaymentStatus.COMPLETED) {
+      const metadata = JSON.parse(payment.metadata);
+
+      for (const ticketPurchase of metadata.tickets) {
+        for (let i = 0; i < ticketPurchase.quantity; i++) {
+          await db.insert(tables.purchased_tickets).values({
+            user_id: payment.buyer_id,
+            ticket_id: ticketPurchase.ticketId,
+            status: TicketStatus.SOLD,
+            price: ticketPurchase.price,
+            quantity: 1,
+          });
+        }
+      }
+
+      // Send confirmation email
+      // ... email sending logic
+    }
+
+    return { success: true };
+  }
+}
+```
+
+## Payment Status
+
+Payments can be in the following states:
+
+- **Pending**: Payment has been initiated, awaiting completion
+- **Processing**: Payment is being processed by the provider
+- **Completed**: Payment successful, tickets issued
+- **Failed**: Payment failed or was declined
+- **Refunded**: Payment was refunded to the buyer
+- **Cancelled**: Payment was cancelled by the user
+
+## Cancelling Payments
+
+```typescript /home/daytona/workspace/source/app/actions/payments.ts:376-416
+export async function cancelPayment(
+  reference: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const payment = await db.query.payments.findFirst({
+      where: eq(tables.payments.provider_reference, reference),
+    });
+
+    if (!payment) {
+      return { success: false, error: "Payment not found" };
+    }
+
+    // Only cancel if payment is still pending or processing
+    if (
+      payment.status === PaymentStatus.PENDING ||
+      payment.status === PaymentStatus.PROCESSING
+    ) {
+      await db
+        .update(tables.payments)
+        .set({
+          status: PaymentStatus.CANCELLED,
+          failure_reason: "Payment cancelled by user",
+          updated_at: new Date(),
+        })
+        .where(eq(tables.payments.id, payment.id));
+
+      return { success: true };
+    }
+
+    return { success: true };
+  }
+}
+```
+
+## Withdrawals
+
+Organizers can request withdrawals of their earnings:
+
+```typescript /home/daytona/workspace/source/lib/db/schema/payments.ts:104-151
+export const withdrawals = pgTable("withdrawals", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  workspace_id: varchar("workspace_id", { length: 16 })
+    .notNull()
+    .references(() => workspace.id),
+  requested_by: varchar("requested_by", { length: 16 })
+    .notNull()
+    .references(() => user.id),
+
+  // Amounts (all in decimal/numeric)
+  requested_amount: numeric("requested_amount", { precision: 10, scale: 2 }).notNull(),
+  withdrawal_fee: numeric("withdrawal_fee", { precision: 10, scale: 2 })
+    .notNull()
+    .default("0"),
+  net_amount: numeric("net_amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("KES"),
+
+  // Status
+  status: withdrawal_status_enum("status")
+    .notNull()
+    .default(WithdrawalStatus.PENDING),
+
+  // Bank/payment details
+  account_number: varchar("account_number", { length: 50 }),
+  account_name: varchar("account_name", { length: 255 }),
+  bank_name: varchar("bank_name", { length: 255 }),
+  provider_reference: varchar("provider_reference", { length: 255 }),
+
+  // Timestamps
+  created_at: timestamp("created_at").notNull().defaultNow(),
+  processed_at: timestamp("processed_at"),
+  completed_at: timestamp("completed_at"),
+});
+```
+
+## KYC Requirements
+
+For paid events, organizers must complete KYC (Know Your Customer) verification:
+
+- Identity verification
+- Bank account details
+- Business information (for organizations)
+- Tax information
+
+<Note>
+  KYC verification is required before creating paid events and processing withdrawals.
+</Note>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Numeric Types" icon="calculator">
+    Always use numeric/decimal types for monetary amounts, never floats.
+  </Card>
+  
+  <Card title="Verify Webhooks" icon="shield-check">
+    Always verify webhook signatures from payment providers.
+  </Card>
+  
+  <Card title="Handle Failures" icon="triangle-exclamation">
+    Implement proper error handling and retry logic for failed payments.
+  </Card>
+  
+  <Card title="Transparent Fees" icon="file-invoice-dollar">
+    Clearly display all fees to users before payment.
+  </Card>
+</CardGroup>

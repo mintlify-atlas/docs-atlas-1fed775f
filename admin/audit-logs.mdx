@@ -1,0 +1,441 @@
+---
+title: Audit Logs
+description: Complete audit trail of all administrative actions for security and compliance
+---
+
+## Overview
+
+The Audit Logs system provides a comprehensive, immutable record of all platform administrative actions. This is essential for security monitoring, regulatory compliance, and investigating issues.
+
+## Accessing Audit Logs
+
+Navigate to `/admin/audit-logs` to view the audit trail:
+
+```typescript
+// app/admin/audit-logs/page.tsx:8-12
+async function AuditLogsData() {
+  const [logs, stats] = await Promise.all([
+    getAuditLogs({ limit: 100 }),
+    getAuditLogStats(),
+  ]);
+}
+```
+
+## Audit Log Schema
+
+Audit logs capture detailed information about each action:
+
+```typescript
+// lib/db/schema/admin-audit-log.ts:10-46
+export const admin_audit_log = pgTable("admin_audit_log", {
+  id: varchar("id", { length: 21 }).primaryKey(),
+  
+  // Admin user who performed the action
+  user_id: varchar("user_id", { length: 16 })
+    .notNull()
+    .references(() => user.id),
+  
+  // Action performed (e.g., "KYC_APPROVED", "ORGANIZER_SUSPENDED")
+  action: varchar("action", { length: 100 }).notNull(),
+  
+  // Additional context data (stored as JSON)
+  metadata: jsonb("metadata"),
+  
+  // IP address of the request
+  ip_address: varchar("ip_address", { length: 45 }), // Supports IPv6
+  
+  // User agent string (browser/device info)
+  user_agent: text("user_agent"),
+  
+  // Request path/URL
+  request_path: varchar("request_path", { length: 500 }),
+  
+  // Result of the action (success/failure)
+  result: varchar("result", { length: 20 }).default("success"),
+  
+  // Error message if action failed
+  error_message: text("error_message"),
+  
+  // Timestamp of the action (UTC)
+  timestamp: timestamp("timestamp", { withTimezone: true, mode: "date" })
+    .notNull()
+    .defaultNow(),
+});
+```
+
+## Logged Actions
+
+All administrative actions are automatically logged:
+
+### Dashboard Access
+
+```typescript
+// app/admin/page.tsx:17
+await logSuperAdminAccess(user.id, "VIEWED_DASHBOARD", undefined, user.email);
+```
+
+### User Management
+
+```typescript
+// app/admin/users/page.tsx:55-60
+await logSuperAdminAccess(
+  adminUser.id,
+  "VIEWED_USER_MANAGEMENT",
+  undefined,
+  adminUser.email
+);
+```
+
+### KYC Actions
+
+```typescript
+// app/actions/kyc-admin.ts:61-72
+await logSuperAdminAccess(
+  user.id,
+  `KYC_${validatedData.status.toUpperCase()}`,
+  {
+    kycId: validatedData.kycId,
+    userId: existingKyc.user_id,
+    previousStatus: existingKyc.status,
+    newStatus: validatedData.status,
+    reason: validatedData.reason || null,
+  },
+  user.email
+);
+```
+
+Common KYC action types:
+- `KYC_APPROVED`
+- `KYC_REJECTED`
+- `KYC_REQUIRES_UPDATE`
+- `VIEWED_KYC_MANAGEMENT`
+
+### Revenue Management
+
+```typescript
+// app/admin/revenue/page.tsx:57-62
+await logSuperAdminAccess(
+  adminUser.id,
+  "VIEWED_REVENUE_MANAGEMENT",
+  undefined,
+  adminUser.email
+);
+```
+
+### Security Management
+
+```typescript
+// app/admin/security/page.tsx:62-67
+await logSuperAdminAccess(
+  adminUser.id,
+  "VIEWED_SECURITY_MANAGEMENT",
+  undefined,
+  adminUser.email
+);
+```
+
+### Blue Ticket Verification
+
+```typescript
+// app/admin/blue-tickets/page.tsx:52-57
+await logSuperAdminAccess(
+  adminUser.id,
+  "VIEWED_BLUE_TICKET_VERIFICATION",
+  undefined,
+  adminUser.email
+);
+```
+
+## Logging Implementation
+
+The audit logging function is comprehensive:
+
+```typescript
+// lib/utils/super-admin.ts:81-134
+export async function logSuperAdminAccess(
+  userId: string,
+  action: string,
+  metadata?: Record<string, unknown>,
+  userEmail?: string,
+): Promise<void> {
+  const timestamp = new Date();
+
+  // Console log for immediate visibility during development
+  console.log("[SUPER_ADMIN_AUDIT]", {
+    timestamp: timestamp.toISOString(),
+    userId,
+    userEmail,
+    action,
+    metadata,
+  });
+
+  try {
+    // Write to database audit log (permanent storage)
+    await db.insert(admin_audit_log).values({
+      user_id: userId,
+      action,
+      metadata: metadata || null,
+      timestamp,
+      ip_address: (metadata?.ip as string) || null,
+      user_agent: (metadata?.userAgent as string) || null,
+      request_path: (metadata?.path as string) || null,
+      result: "success",
+    });
+  } catch (error) {
+    // Log database errors but don't fail the operation
+    console.error("[SUPER_ADMIN_AUDIT] Failed to write to database:", error);
+    
+    // Try to log the error itself
+    try {
+      await db.insert(admin_audit_log).values({
+        user_id: userId,
+        action: "AUDIT_LOG_ERROR",
+        metadata: {
+          originalAction: action,
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+        timestamp: new Date(),
+        result: "failure",
+        error_message: error instanceof Error ? error.message : "Unknown error",
+      });
+    } catch {
+      console.error(
+        "[SUPER_ADMIN_AUDIT] Critical: Cannot write to audit log database"
+      );
+    }
+  }
+}
+```
+
+## Audit Statistics
+
+The audit logs page displays comprehensive statistics:
+
+### Total Actions (30 days)
+
+```typescript
+// app/admin/audit-logs/page.tsx:20-22
+<p className="text-2xl font-bold mt-2">{stats.totalActions}</p>
+```
+
+Count of all admin actions in the last 30 days.
+
+### Active Admins
+
+```typescript
+// app/admin/audit-logs/page.tsx:28-29
+<p className="text-2xl font-bold mt-2">{stats.uniqueAdmins}</p>
+```
+
+Number of unique administrators who performed actions.
+
+### Last 24 Hours
+
+```typescript
+// app/admin/audit-logs/page.tsx:35-36
+<p className="text-2xl font-bold mt-2">{stats.last24Hours}</p>
+```
+
+Recent activity count for quick monitoring.
+
+### Failed Actions
+
+```typescript
+// app/admin/audit-logs/page.tsx:42-44
+<p className="text-2xl font-bold mt-2 text-destructive">
+  {stats.failedActions}
+</p>
+```
+
+Actions that resulted in errors - requires investigation.
+
+### Action Breakdown
+
+```typescript
+// app/admin/audit-logs/page.tsx:52-62
+{Object.entries(stats.actionsByType)
+  .sort(([, a], [, b]) => b - a)
+  .slice(0, 10)
+  .map(([action, count]) => (
+    <div key={action} className="flex items-center justify-between">
+      <span className="text-sm font-mono">{action}</span>
+      <span className="text-sm text-muted-foreground">{count}</span>
+    </div>
+  ))}
+```
+
+Top 10 most common actions sorted by frequency.
+
+## Recent Activity Table
+
+The main audit log table displays:
+
+```typescript
+// app/admin/audit-logs/page.tsx:83-135
+<table className="w-full min-w-[800px]">
+  <thead className="border-b bg-muted/30">
+    <tr className="text-sm">
+      <th className="text-left py-3 px-4">Timestamp</th>
+      <th className="text-left py-3 px-4">Admin</th>
+      <th className="text-left py-3 px-4">Action</th>
+      <th className="text-left py-3 px-4">IP Address</th>
+      <th className="text-left py-3 px-4">Result</th>
+    </tr>
+  </thead>
+  <tbody className="text-sm">
+    {logs.logs.map((log) => (
+      <tr key={log.id} className="border-b hover:bg-muted/50">
+        <td className="py-3 px-4 font-mono text-xs">
+          {new Date(log.timestamp).toLocaleString()}
+        </td>
+        <td className="py-3 px-4">
+          <span className="font-mono text-xs">{log.user_email}</span>
+        </td>
+        <td className="py-3 px-4">
+          <span className="font-mono text-xs">{log.action}</span>
+        </td>
+        <td className="py-3 px-4">
+          <span className="font-mono text-xs">{log.ip_address || "-"}</span>
+        </td>
+        <td className="py-3 px-4">
+          <Badge variant={log.result === "success" ? "default" : "destructive"}>
+            {log.result || "success"}
+          </Badge>
+        </td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+```
+
+## Dashboard Integration
+
+Recent security events appear on the admin dashboard:
+
+```typescript
+// dal/admin-metrics.ts:299-313
+const recentSecurityEvents = await db
+  .select({
+    id: tables.admin_audit_log.id,
+    action: tables.admin_audit_log.action,
+    timestamp: tables.admin_audit_log.timestamp,
+    result: tables.admin_audit_log.result,
+    ipAddress: tables.admin_audit_log.ip_address,
+    userEmail: tables.user.email,
+  })
+  .from(tables.admin_audit_log)
+  .leftJoin(tables.user, eq(tables.admin_audit_log.user_id, tables.user.id))
+  .where(gte(tables.admin_audit_log.timestamp, last24Hours))
+  .orderBy(desc(tables.admin_audit_log.timestamp))
+  .limit(10);
+```
+
+This provides quick visibility into recent admin activity.
+
+## Compliance & Retention
+
+Audit logs are designed for regulatory compliance:
+
+```typescript
+// app/admin/audit-logs/page.tsx:147-155
+<div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+  <p className="text-sm font-medium text-blue-900">📋 Compliance & Retention</p>
+  <p className="text-sm text-blue-800 mt-1">
+    All audit logs are permanently stored for regulatory compliance.
+    Minimum retention: 7 years. Logs are immutable and cannot be deleted.
+  </p>
+</div>
+```
+
+### Key Compliance Features
+
+1. **Immutable Records**: Logs cannot be edited or deleted
+2. **7+ Year Retention**: Minimum retention period for regulatory requirements
+3. **Complete Audit Trail**: Every admin action is logged
+4. **Timestamp Accuracy**: UTC timestamps with timezone support
+5. **IP Tracking**: IPv6 support for complete address logging
+6. **Error Logging**: Failed actions are captured with error messages
+
+## Export Functionality
+
+```typescript
+// app/admin/audit-logs/page.tsx:70-74
+<a
+  href="/admin/audit-logs/export"
+  className="text-sm text-primary hover:underline"
+>
+  Export CSV
+</a>
+```
+
+Audit logs can be exported for:
+- External auditing
+- Compliance reporting
+- Long-term archival
+- Data analysis
+
+## Metadata Tracking
+
+Detailed context is stored in the metadata field:
+
+```typescript
+// Example KYC approval metadata
+{
+  kycId: "abc123",
+  userId: "user456",
+  previousStatus: "pending",
+  newStatus: "approved",
+  reason: null
+}
+```
+
+Metadata includes:
+- Related entity IDs
+- Previous and new states
+- Rejection/approval reasons
+- Custom action-specific data
+
+## Security Monitoring
+
+Use audit logs to detect:
+
+1. **Unusual Activity Patterns**
+   - Multiple failed actions from same admin
+   - Actions outside normal working hours
+   - Rapid succession of high-risk actions
+
+2. **Unauthorized Access Attempts**
+   - Failed authentication events
+   - Access from unexpected IP addresses
+   - Geographic anomalies
+
+3. **Policy Violations**
+   - Actions without proper justification
+   - Suspicious patterns in KYC approvals
+   - Unusual data access patterns
+
+## Error Handling
+
+The logging system is resilient:
+
+1. **Primary Log Attempt**: Write to database
+2. **Error Capture**: If primary fails, log the error itself
+3. **Console Fallback**: Critical errors logged to console
+4. **Non-Blocking**: Logging failures don't break admin operations
+
+## Best Practices
+
+1. **Regular Review**: Check audit logs daily for anomalies
+2. **Failed Action Investigation**: Immediately investigate failed actions
+3. **Export for Compliance**: Regular exports for external auditing
+4. **Pattern Recognition**: Monitor for unusual activity patterns
+5. **Retention Compliance**: Ensure 7-year minimum retention
+6. **Access Control**: Limit audit log access to senior administrators
+7. **Correlation**: Cross-reference with application logs for investigation
+
+## Related Documentation
+
+- [Admin Overview](/admin/overview)
+- [Security Management](/admin/security)
+- [User Management](/admin/user-management)
+- [KYC Approval](/admin/kyc-approval)

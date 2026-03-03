@@ -1,0 +1,473 @@
+---
+title: Channels
+description: Event communication channels for sharing updates, announcements, and engaging with attendees
+---
+
+Channels provide a dedicated communication platform for event organizers to share updates, post announcements, and engage with their community.
+
+## Channel Overview
+
+Channels are workspace-specific communication hubs that allow:
+
+- Broadcasting updates to all channel members
+- Sharing event recaps and highlights
+- Posting media content (images, videos)
+- Engaging with attendees through reactions
+- Building community around events
+
+## Creating Channels
+
+Only workspace admins can create channels:
+
+<Steps>
+  <Step title="Verify Admin Access">
+    User must have admin role in the workspace.
+  </Step>
+  
+  <Step title="Check Existing Channel">
+    Each workspace can have one channel.
+  </Step>
+  
+  <Step title="Configure Channel">
+    Set name, bio, website, and social links.
+  </Step>
+  
+  <Step title="Publish Channel">
+    Channel becomes available for users to join.
+  </Step>
+</Steps>
+
+```typescript /home/daytona/workspace/source/app/actions/channels.ts:74-150
+export async function createChannel(
+  _prevState: unknown,
+  formData: FormData,
+): Promise<{ success: boolean; channelId?: string; error?: string }> {
+  try {
+    const { user } = await getCurrentSession();
+    if (!user) {
+      return { success: false, error: "Authentication required" };
+    }
+
+    const rawData = {
+      workspaceId: formData.get("workspaceId") as string,
+      name: formData.get("name") as string,
+      bio: formData.get("bio") as string,
+      website: formData.get("website") as string,
+      socialLinks: formData.get("socialLinks")
+        ? JSON.parse(formData.get("socialLinks") as string)
+        : undefined,
+    };
+
+    const validatedData = createChannelSchema.parse(rawData);
+
+    // Check if user is workspace admin
+    const isAdmin = await checkWorkspaceAdmin(
+      validatedData.workspaceId,
+      user.id,
+    );
+    if (!isAdmin) {
+      return {
+        success: false,
+        error: "Only workspace admins can create channels",
+      };
+    }
+
+    // Check if channel already exists for this workspace
+    const existingChannel = await getChannelByWorkspaceId(
+      validatedData.workspaceId,
+    );
+    if (existingChannel) {
+      return {
+        success: false,
+        error: "Channel already exists for this workspace",
+      };
+    }
+
+    // Create channel
+    const [channel] = await db
+      .insert(tables.channels)
+      .values({
+        workspace_id: validatedData.workspaceId,
+        name: validatedData.name,
+        bio: validatedData.bio || null,
+        website: validatedData.website || null,
+        social_links: validatedData.socialLinks || null,
+        is_verified: false,
+        verification_requested: false,
+      })
+      .returning();
+
+    return { success: true, channelId: channel.id };
+  }
+}
+```
+
+## Channel Schema
+
+```typescript /home/daytona/workspace/source/lib/db/schema/channels.ts:13-44
+export const channels = pgTable("channels", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  workspace_id: varchar("workspace_id", { length: 16 })
+    .notNull()
+    .references(() => workspace.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  bio: text("bio"), // Channel description
+  image_url: text("image_url"), // Channel/workspace image
+  website: varchar("website", { length: 255 }), // Website link
+  social_links: jsonb("social_links"), // { twitter, linkedin, instagram, github }
+  is_verified: boolean("is_verified").notNull().default(false), // Blue badge
+  verification_requested: boolean("verification_requested")
+    .notNull()
+    .default(false),
+  created_at: timestamp("created_at").notNull().defaultNow(),
+  updated_at: timestamp("updated_at").notNull().defaultNow(),
+});
+```
+
+## Channel Membership
+
+### Joining Channels
+
+Users can join channels to receive updates:
+
+```typescript /home/daytona/workspace/source/app/actions/channels.ts:154-197
+export async function joinChannel(
+  channelId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { user } = await getCurrentSession();
+    if (!user) {
+      return { success: false, error: "Authentication required" };
+    }
+
+    // Check if channel exists
+    const channel = await db.query.channels.findFirst({
+      where: eq(tables.channels.id, channelId),
+    });
+
+    if (!channel) {
+      return { success: false, error: "Channel not found" };
+    }
+
+    // Check if already a member
+    const existingMember = await db.query.channel_members.findFirst({
+      where: and(
+        eq(tables.channel_members.channel_id, channelId),
+        eq(tables.channel_members.user_id, user.id),
+      ),
+    });
+
+    if (existingMember) {
+      return { success: true }; // Already a member
+    }
+
+    // Join channel
+    await db.insert(tables.channel_members).values({
+      channel_id: channelId,
+      user_id: user.id,
+      notifications_enabled: true,
+    });
+
+    return { success: true };
+  }
+}
+```
+
+### Leaving Channels
+
+```typescript /home/daytona/workspace/source/app/actions/channels.ts:202-225
+export async function leaveChannel(
+  channelId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { user } = await getCurrentSession();
+    if (!user) {
+      return { success: false, error: "Authentication required" };
+    }
+
+    await db
+      .delete(tables.channel_members)
+      .where(
+        and(
+          eq(tables.channel_members.channel_id, channelId),
+          eq(tables.channel_members.user_id, user.id),
+        ),
+      );
+
+    return { success: true };
+  }
+}
+```
+
+## Channel Posts
+
+### Creating Posts
+
+Only workspace admins can post to channels:
+
+```typescript /home/daytona/workspace/source/app/actions/channels.ts:230-295
+export async function createChannelPost(
+  _prevState: unknown,
+  formData: FormData,
+): Promise<{ success: boolean; postId?: string; error?: string }> {
+  try {
+    const { user } = await getCurrentSession();
+    if (!user) {
+      return { success: false, error: "Authentication required" };
+    }
+
+    const rawData = {
+      channelId: formData.get("channelId") as string,
+      content: formData.get("content") as string,
+      mediaLinks: formData.get("mediaLinks")
+        ? JSON.parse(formData.get("mediaLinks") as string)
+        : undefined,
+      linkUrl: formData.get("linkUrl") || undefined,
+      linkTitle: formData.get("linkTitle") || undefined,
+    };
+
+    const validatedData = createPostSchema.parse(rawData);
+
+    // Get channel to check workspace
+    const channel = await db.query.channels.findFirst({
+      where: eq(tables.channels.id, validatedData.channelId),
+    });
+
+    if (!channel) {
+      return { success: false, error: "Channel not found" };
+    }
+
+    // Check if user is workspace admin
+    const isAdmin = await checkWorkspaceAdmin(channel.workspace_id, user.id);
+    if (!isAdmin) {
+      return {
+        success: false,
+        error: "Only workspace admins can post to channels",
+      };
+    }
+
+    // Create post
+    const [post] = await db
+      .insert(tables.channel_posts)
+      .values({
+        channel_id: validatedData.channelId,
+        created_by: user.id,
+        content: validatedData.content,
+        media_links: validatedData.mediaLinks || null,
+        link_url: validatedData.linkUrl || null,
+        link_title: validatedData.linkTitle || null,
+      })
+      .returning();
+
+    return { success: true, postId: post.id };
+  }
+}
+```
+
+### Post Schema
+
+```typescript /home/daytona/workspace/source/lib/db/schema/channels.ts:74-106
+export const channel_posts = pgTable("channel_posts", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  channel_id: varchar("channel_id", { length: 16 })
+    .notNull()
+    .references(() => channels.id, { onDelete: "cascade" }),
+  created_by: varchar("created_by", { length: 16 })
+    .notNull()
+    .references(() => user.id),
+  content: text("content").notNull(),
+  media_links: jsonb("media_links"), // Array of media URLs
+  link_url: varchar("link_url", { length: 512 }), // External link
+  link_title: varchar("link_title", { length: 255 }), // Link title
+  created_at: timestamp("created_at").notNull().defaultNow(),
+  updated_at: timestamp("updated_at").notNull().defaultNow(),
+});
+```
+
+## Reactions
+
+Channel members can react to posts with emojis:
+
+```typescript /home/daytona/workspace/source/app/actions/channels.ts:300-362
+export async function togglePostReaction(
+  postId: string,
+  emoji: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { user } = await getCurrentSession();
+    if (!user) {
+      return { success: false, error: "Authentication required" };
+    }
+
+    // Check if post exists
+    const post = await db.query.channel_posts.findFirst({
+      where: eq(tables.channel_posts.id, postId),
+    });
+
+    if (!post) {
+      return { success: false, error: "Post not found" };
+    }
+
+    // Check if user is channel member
+    const isMember = await db.query.channel_members.findFirst({
+      where: and(
+        eq(tables.channel_members.channel_id, post.channel_id),
+        eq(tables.channel_members.user_id, user.id),
+      ),
+    });
+
+    if (!isMember) {
+      return {
+        success: false,
+        error: "You must be a channel member to react",
+      };
+    }
+
+    // Check if reaction already exists
+    const existingReaction = await db.query.channel_reactions.findFirst({
+      where: and(
+        eq(tables.channel_reactions.post_id, postId),
+        eq(tables.channel_reactions.user_id, user.id),
+        eq(tables.channel_reactions.emoji, emoji),
+      ),
+    });
+
+    if (existingReaction) {
+      // Remove reaction
+      await db
+        .delete(tables.channel_reactions)
+        .where(eq(tables.channel_reactions.id, existingReaction.id));
+    } else {
+      // Add reaction
+      await db.insert(tables.channel_reactions).values({
+        post_id: postId,
+        user_id: user.id,
+        emoji,
+      });
+    }
+
+    return { success: true };
+  }
+}
+```
+
+## Notification Settings
+
+Channel members can control notification preferences:
+
+```typescript /home/daytona/workspace/source/app/actions/channels.ts:367-395
+export async function updateChannelNotificationSettings(
+  channelId: string,
+  notificationsEnabled: boolean,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { user } = await getCurrentSession();
+    if (!user) {
+      return { success: false, error: "Authentication required" };
+    }
+
+    await db
+      .update(tables.channel_members)
+      .set({ notifications_enabled: notificationsEnabled })
+      .where(
+        and(
+          eq(tables.channel_members.channel_id, channelId),
+          eq(tables.channel_members.user_id, user.id),
+        ),
+      );
+
+    return { success: true };
+  }
+}
+```
+
+## Channel Verification
+
+Workspace admins can request channel verification for a blue badge:
+
+```typescript /home/daytona/workspace/source/app/actions/channels.ts:400-438
+export async function requestChannelVerification(
+  channelId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { user } = await getCurrentSession();
+    if (!user) {
+      return { success: false, error: "Authentication required" };
+    }
+
+    // Get channel to check workspace
+    const channel = await db.query.channels.findFirst({
+      where: eq(tables.channels.id, channelId),
+    });
+
+    if (!channel) {
+      return { success: false, error: "Channel not found" };
+    }
+
+    // Check if user is workspace admin
+    const isAdmin = await checkWorkspaceAdmin(channel.workspace_id, user.id);
+    if (!isAdmin) {
+      return {
+        success: false,
+        error: "Only workspace admins can request verification",
+      };
+    }
+
+    // Update verification request
+    await db
+      .update(tables.channels)
+      .set({ verification_requested: true })
+      .where(eq(tables.channels.id, channelId));
+
+    return { success: true };
+  }
+}
+```
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Event Updates" icon="bullhorn">
+    Share real-time updates about event schedules and changes.
+  </Card>
+  
+  <Card title="Post-Event Recaps" icon="images">
+    Share photos, videos, and highlights after events.
+  </Card>
+  
+  <Card title="Announcements" icon="megaphone">
+    Broadcast important information to all followers.
+  </Card>
+  
+  <Card title="Community Building" icon="users">
+    Engage with attendees and build a loyal community.
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<Steps>
+  <Step title="Regular Updates">
+    Post regularly to keep your community engaged.
+  </Step>
+  
+  <Step title="Visual Content">
+    Include images and videos to increase engagement.
+  </Step>
+  
+  <Step title="External Links">
+    Share relevant links to blog posts, recaps, or resources.
+  </Step>
+  
+  <Step title="Respond to Reactions">
+    Monitor reactions to gauge community interest.
+  </Step>
+  
+  <Step title="Build Verification">
+    Request verification to build trust and credibility.
+  </Step>
+</Steps>
+
+<Note>
+  Channels are public and can be followed by anyone interested in your events and updates.
+</Note>

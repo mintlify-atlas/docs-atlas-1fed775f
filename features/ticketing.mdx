@@ -1,0 +1,398 @@
+---
+title: Ticketing
+description: Flexible ticketing system with multiple ticket types, pricing tiers, and availability management
+---
+
+EventPalour's ticketing system supports multiple ticket types, dynamic pricing, availability management, and ticket transfers.
+
+## Ticket Types
+
+Create custom ticket types for different attendee categories:
+
+- **VIP**: Premium access with special privileges
+- **Early Bird**: Discounted tickets for early registrations
+- **Standard**: Regular admission tickets
+- **Student**: Discounted tickets for students
+- **Custom**: Any custom ticket type you define
+
+### Ticket Type Schema
+
+```typescript /home/daytona/workspace/source/lib/db/schema/tickets.ts:7-22
+export const tickets_types = pgTable("tickets_type", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  workspace_id: varchar("workspace_id", { length: 16 })
+    .notNull()
+    .references(() => workspace.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(), // Ticket type name
+  created_at: timestamp("created_at", { mode: "date", precision: 3 })
+    .notNull()
+    .defaultNow(),
+  updated_at: timestamp("updated_at", { mode: "date", precision: 3 })
+    .notNull()
+    .defaultNow(),
+});
+```
+
+## Ticket Configuration
+
+### Pricing
+
+Set prices for each ticket type with support for multiple currencies:
+
+```typescript /home/daytona/workspace/source/lib/db/schema/tickets.ts:24-46
+export const tickets = pgTable("tickets", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  event_id: varchar("event_id", { length: 16 })
+    .notNull()
+    .references(() => events.id, { onDelete: "cascade" }),
+  ticket_type_id: varchar("ticket_type_id", { length: 16 })
+    .notNull()
+    .references(() => tickets_types.id),
+  price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+  availability_quantity: integer("availability"), // NULL = unlimited
+  currency: currency_enum("currency").notNull().default(CurrencyEnum.KES),
+  valid_from: timestamp("valid_from", { withTimezone: true }),
+  valid_until: timestamp("valid_until", { withTimezone: true }),
+});
+```
+
+### Availability Management
+
+- **Unlimited**: Set `availability_quantity` to `null` for unlimited tickets
+- **Limited**: Specify the maximum number of available tickets
+- **Sold Out**: Automatically tracked based on purchases vs. availability
+
+## Booking Tickets
+
+### Free Event Registration
+
+<Steps>
+  <Step title="User Authentication">
+    User must be logged in to register for events.
+  </Step>
+  
+  <Step title="Check Registration Status">
+    Verify user hasn't already registered for the event.
+  </Step>
+  
+  <Step title="Create Registration">
+    Record the registration in the database.
+  </Step>
+  
+  <Step title="Send Confirmation">
+    Email confirmation with event details to the user.
+  </Step>
+</Steps>
+
+```typescript /home/daytona/workspace/source/app/actions/tickets.ts:191-248
+export async function registerForFreeEvent(data: {
+  eventId: string;
+}): Promise<{ success: boolean; error?: string; alreadyRegistered?: boolean }> {
+  try {
+    const user = await getUser();
+    if (!user) {
+      return { success: false, error: "Authentication required" };
+    }
+
+    const validatedData = registerFreeEventSchema.parse(data);
+
+    // Get event details
+    const event = await getEventById(validatedData.eventId);
+    if (!event) {
+      return { success: false, error: "Event not found" };
+    }
+
+    // Verify the event is free
+    if (event.pricing !== EventPricing.FREE) {
+      return { success: false, error: "This event requires ticket purchase" };
+    }
+
+    // Check if user is already registered
+    const existingRegistration = await db.query.event_registrations.findFirst({
+      where: and(
+        eq(tables.event_registrations.user_id, user.id),
+        eq(tables.event_registrations.event_id, validatedData.eventId),
+      ),
+    });
+
+    if (existingRegistration) {
+      return {
+        success: true,
+        alreadyRegistered: true,
+        error: "You are already registered for this event",
+      };
+    }
+
+    // Create the registration
+    await db.insert(tables.event_registrations).values({
+      user_id: user.id,
+      event_id: validatedData.eventId,
+    });
+
+    return { success: true };
+  }
+}
+```
+
+### Paid Event Booking
+
+<Steps>
+  <Step title="Select Tickets">
+    User chooses ticket types and quantities.
+  </Step>
+  
+  <Step title="Check Availability">
+    Verify sufficient tickets are available.
+  </Step>
+  
+  <Step title="Initiate Payment">
+    Create payment record and redirect to payment provider.
+  </Step>
+  
+  <Step title="Complete Purchase">
+    After successful payment, create purchased tickets.
+  </Step>
+  
+  <Step title="Send Tickets">
+    Email tickets with QR codes to the user.
+  </Step>
+</Steps>
+
+```typescript /home/daytona/workspace/source/app/actions/tickets.ts:27-100
+export async function bookEventTicket(data: {
+  eventId: string;
+  tickets: Array<{ ticketId: string; quantity: number }>;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const user = await getUser();
+    if (!user) {
+      return { success: false, error: "Authentication required" };
+    }
+
+    const validatedData = bookTicketSchema.parse(data);
+
+    // Get event details
+    const event = await getEventById(validatedData.eventId);
+    if (!event) {
+      return { success: false, error: "Event not found" };
+    }
+
+    // Validate tickets and check availability
+    const ticketPurchases = [];
+    let totalPrice = 0;
+
+    for (const ticketSelection of validatedData.tickets) {
+      const ticket = await db.query.tickets.findFirst({
+        where: and(
+          eq(tables.tickets.id, ticketSelection.ticketId),
+          eq(tables.tickets.event_id, validatedData.eventId),
+        ),
+      });
+
+      if (!ticket) {
+        return { success: false, error: "Invalid ticket" };
+      }
+
+      // Check availability
+      if (ticket.availability_quantity !== null) {
+        const purchasedCount = await db
+          .select({ count: tables.purchased_tickets.quantity })
+          .from(tables.purchased_tickets)
+          .where(eq(tables.purchased_tickets.ticket_id, ticket.id));
+
+        const totalPurchased = purchasedCount.reduce(
+          (sum, p) => sum + p.count,
+          0,
+        );
+
+        if (
+          totalPurchased + ticketSelection.quantity >
+          ticket.availability_quantity
+        ) {
+          return {
+            success: false,
+            error: "Not enough tickets available",
+          };
+        }
+      }
+    }
+
+    return { success: true };
+  }
+}
+```
+
+## Ticket Status
+
+Tickets can be in various states throughout their lifecycle:
+
+- **Sold**: Ticket has been purchased and is active
+- **Cancelled**: Ticket booking was cancelled
+- **Refunded**: Payment was refunded
+- **Transferred**: Ticket was transferred to another user
+- **Used**: Ticket was scanned/used for event entry
+
+## Ticket Transfers
+
+Users can transfer tickets to other registered users:
+
+<Steps>
+  <Step title="Verify Ownership">
+    Check that the user owns the ticket they want to transfer.
+  </Step>
+  
+  <Step title="Find Recipient">
+    Recipient must have an EventPalour account.
+  </Step>
+  
+  <Step title="Validate Transfer">
+    Ensure ticket hasn't already been used or transferred.
+  </Step>
+  
+  <Step title="Create Transfer Record">
+    Record the transfer transaction.
+  </Step>
+  
+  <Step title="Update Ownership">
+    Transfer ticket ownership to the recipient.
+  </Step>
+  
+  <Step title="Notify Recipient">
+    Send email notification to the new ticket owner.
+  </Step>
+</Steps>
+
+```typescript /home/daytona/workspace/source/app/actions/tickets.ts:378-495
+export async function transferTicket(data: {
+  purchasedTicketId: string;
+  recipientEmail: string;
+}): Promise<{ success: boolean; error?: string; recipientId?: string }> {
+  try {
+    const user = await getUser();
+    if (!user) {
+      return { success: false, error: "Authentication required" };
+    }
+
+    // Verify ticket belongs to current user
+    if (purchasedTicket.userId !== user.id) {
+      return {
+        success: false,
+        error: "You don't have permission to transfer this ticket",
+      };
+    }
+
+    // Check if ticket is valid (not used, cancelled, refunded)
+    if (
+      purchasedTicket.used ||
+      purchasedTicket.status === TicketStatus.CANCELLED ||
+      purchasedTicket.status === TicketStatus.REFUNDED ||
+      purchasedTicket.status === TicketStatus.TRANSFERRED
+    ) {
+      return {
+        success: false,
+        error: "This ticket cannot be transferred",
+      };
+    }
+
+    // Find recipient user by email
+    const recipient = await db.query.user.findFirst({
+      where: eq(tables.user.email, validatedData.recipientEmail),
+    });
+
+    if (!recipient) {
+      return {
+        success: false,
+        error: "Recipient not found. Please ensure they have an account.",
+      };
+    }
+
+    // Create transfer record
+    await db.insert(tables.ticket_transfers).values({
+      purchased_ticket_id: validatedData.purchasedTicketId,
+      from_user_id: user.id,
+      to_user_id: recipient.id,
+    });
+
+    // Update purchased ticket to transfer ownership
+    await db
+      .update(tables.purchased_tickets)
+      .set({
+        user_id: recipient.id,
+        status: TicketStatus.TRANSFERRED,
+        updated_at: new Date(),
+      })
+      .where(eq(tables.purchased_tickets.id, validatedData.purchasedTicketId));
+
+    return { success: true, recipientId: recipient.id };
+  }
+}
+```
+
+## Ticket Reservations
+
+EventPalour supports ticket reservations to hold tickets temporarily:
+
+- Reserve tickets for a limited time during checkout
+- Automatically release expired reservations
+- Prevent overselling during high-demand periods
+
+## Check Registration Status
+
+```typescript /home/daytona/workspace/source/app/actions/tickets.ts:350-371
+export async function checkEventRegistration(
+  eventId: string,
+): Promise<{ isRegistered: boolean }> {
+  try {
+    const user = await getUser();
+    if (!user) {
+      return { isRegistered: false };
+    }
+
+    const registration = await db.query.event_registrations.findFirst({
+      where: and(
+        eq(tables.event_registrations.user_id, user.id),
+        eq(tables.event_registrations.event_id, eventId),
+      ),
+    });
+
+    return { isRegistered: Boolean(registration) };
+  } catch (error) {
+    console.error("Check registration error:", error);
+    return { isRegistered: false };
+  }
+}
+```
+
+## Email Confirmations
+
+All ticket purchases and registrations include email confirmations with:
+
+- Event details (title, date, time, location)
+- Ticket information (type, quantity, price)
+- QR code for event check-in
+- Online meeting link (for virtual/hybrid events)
+- Calendar invite attachment
+
+<Note>
+  Ticket QR codes are unique per purchase and can be scanned at event entry for verification.
+</Note>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Set Clear Availability" icon="ticket">
+    Always specify ticket quantities to create urgency and manage capacity.
+  </Card>
+  
+  <Card title="Use Ticket Types" icon="layer-group">
+    Create different ticket types for various attendee categories and pricing tiers.
+  </Card>
+  
+  <Card title="Enable Transfers" icon="arrow-right-arrow-left">
+    Allow ticket transfers to improve attendee flexibility.
+  </Card>
+  
+  <Card title="Monitor Sales" icon="chart-line">
+    Track ticket sales in real-time through the analytics dashboard.
+  </Card>
+</CardGroup>

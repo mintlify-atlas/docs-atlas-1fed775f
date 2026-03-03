@@ -1,0 +1,190 @@
+---
+title: 'Creating a Workspace'
+description: 'Learn how to create and set up your first workspace in EventPalour'
+icon: 'building'
+---
+
+Workspaces are multi-tenant containers that organize your events, team members, and billing information. Each workspace represents a distinct organization or brand managing events on EventPalour.
+
+## Understanding Workspaces
+
+A workspace serves as:
+- A container for all your events
+- A team collaboration hub with role-based permissions
+- A billing entity for revenue management
+- A brand identity with custom logo and social links
+
+## Creating Your First Workspace
+
+<Steps>
+  <Step title="Complete User Onboarding">
+    After signing up, select **Event Organizer** as your role during the onboarding flow. This unlocks workspace creation capabilities.
+
+    Attendees cannot create workspaces - only organizers can manage events and teams.
+  </Step>
+
+  <Step title="Provide Business Information">
+    Fill out the workspace creation form with your business details:
+
+    ### Required Fields
+    - **Business Name**: Your organization or brand name (minimum 2 characters)
+    - **Description**: A detailed description of your business and event types (minimum 10 characters)
+
+    ### Optional Fields
+    - **Website**: Your official website URL
+    - **Phone Number**: Contact phone number with country code
+    - **Business Logo**: Upload a custom logo (PNG/JPG, max 2MB)
+
+    <Note>
+      If you don't upload a custom logo, EventPalour automatically generates a default avatar using your workspace initials.
+    </Note>
+  </Step>
+
+  <Step title="Add Social Media Links">
+    Connect your social media profiles to build credibility:
+    - X (Twitter)
+    - Facebook
+    - LinkedIn
+    - Instagram
+    - GitHub
+
+    All social links are optional but help attendees discover and trust your brand.
+  </Step>
+
+  <Step title="Complete Workspace Creation">
+    Click **Create Workspace** to finalize setup. The system will:
+    - Generate a unique workspace ID
+    - Create a unique invite code for team invitations
+    - Set you as the workspace owner with admin permissions
+    - Add you as the first workspace member
+    - Redirect you to your workspace dashboard
+  </Step>
+</Steps>
+
+## Workspace Structure
+
+### Database Schema
+
+Your workspace includes the following data:
+
+```typescript
+{
+  id: string;                // 16-character unique identifier
+  name: string;              // Business name
+  description: string | null;
+  website: string | null;
+  phone: string | null;
+  social_x: string | null;
+  social_facebook: string | null;
+  social_linkedin: string | null;
+  social_instagram: string | null;
+  social_github: string | null;
+  image_url: string;         // Logo URL or empty string
+  invite_code: string;       // Unique invite code for team
+  user_id: string;           // Owner user ID
+  created_at: Date;
+  updated_at: Date;
+}
+```
+
+### Workspace Roles
+
+When you create a workspace, you're automatically assigned:
+- **Owner**: Full control over the workspace
+- **Admin Role**: All administrative permissions
+- **Member Status**: Listed in workspace members
+
+Learn more about roles in [Team Collaboration](/workspace/team-collaboration).
+
+## After Creation
+
+Once your workspace is created:
+
+<CardGroup cols={2}>
+  <Card title="Invite Team Members" icon="users" href="/workspace/team-collaboration">
+    Add team members and assign roles
+  </Card>
+  <Card title="Create Your First Event" icon="calendar">
+    Start organizing events in your workspace
+  </Card>
+  <Card title="Configure Settings" icon="gear" href="/workspace/settings">
+    Customize workspace profile and branding
+  </Card>
+  <Card title="Set Up Billing" icon="credit-card" href="/workspace/billing">
+    Configure payment methods and view revenue
+  </Card>
+</CardGroup>
+
+## Workspace URL
+
+Your workspace is accessible at:
+```
+eventpalour.com/workspace/{workspaceId}
+```
+
+The workspace ID is automatically generated and cannot be changed. You can copy this URL from your workspace settings.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use a Descriptive Business Name">
+    Choose a name that clearly represents your brand or organization. This name appears on all your events and communications.
+  </Accordion>
+
+  <Accordion title="Complete Your Profile">
+    Fill out all optional fields to build trust with attendees. Workspaces with complete profiles see higher ticket sales.
+  </Accordion>
+
+  <Accordion title="Upload a Professional Logo">
+    A custom logo builds brand recognition. Use a square image (recommended 400x400px) for best results.
+  </Accordion>
+
+  <Accordion title="Add Social Links">
+    Connecting social profiles helps attendees verify your authenticity and discover more about your organization.
+  </Accordion>
+</AccordionGroup>
+
+## Multiple Workspaces
+
+<Warning>
+  Currently, each organizer can own **one workspace**. However, you can be a member of multiple workspaces by accepting invitations from other workspace owners.
+</Warning>
+
+If you manage multiple brands or organizations, consider:
+- Using workspace members with different roles
+- Transferring workspace ownership when needed
+- Coordinating with other organizers as team members
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="I can't create a workspace">
+    Ensure you:
+    - Selected "Event Organizer" during onboarding
+    - Completed all required fields (Business Name and Description)
+    - Are signed in with a valid account
+    - Don't already own a workspace
+  </Accordion>
+
+  <Accordion title="Logo upload fails">
+    Check that your image:
+    - Is in PNG or JPG format
+    - Is under 2MB in size
+    - Has valid image data
+  </Accordion>
+
+  <Accordion title="Can I change my workspace ID?">
+    No, workspace IDs are permanent and cannot be changed. They're used in URLs and database references throughout the platform.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Invite Team Members" icon="user-plus" href="/workspace/team-collaboration">
+    Build your team with roles and permissions
+  </Card>
+  <Card title="Customize Settings" icon="sliders" href="/workspace/settings">
+    Update workspace profile and preferences
+  </Card>
+</CardGroup>

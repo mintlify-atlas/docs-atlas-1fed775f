@@ -1,0 +1,350 @@
+---
+title: Purchasing Tickets
+description: Complete guide to purchasing tickets and registering for events
+---
+
+EventPalour supports both free event registration and paid ticket purchases through secure payment processing. This guide covers the complete ticket purchasing flow.
+
+## Registration vs Purchase
+
+EventPalour handles two types of event attendance:
+
+### Free Event Registration
+
+For events marked as "Free":
+- No payment required
+- Simple one-click registration
+- Instant confirmation
+- Email confirmation sent automatically
+
+### Paid Event Purchase
+
+For events with ticket pricing:
+- Secure payment processing through Paystack
+- Multiple ticket tiers available
+- Payment verification and confirmation
+- Digital tickets with QR codes
+
+## Free Event Registration
+
+<Steps>
+  <Step title="View Event Details">
+    Navigate to the event page and verify it's marked as "Free"
+  </Step>
+  
+  <Step title="Click Register">
+    Click the "Register" button on the event page. You must be signed in to register.
+  </Step>
+  
+  <Step title="Confirm Registration">
+    The system checks if you're already registered and creates your registration record:
+    
+    ```typescript
+    // From app/actions/tickets.ts:191
+    await registerForFreeEvent({
+      eventId: eventId
+    });
+    ```
+  </Step>
+  
+  <Step title="Receive Confirmation">
+    You'll receive an email confirmation with:
+    - Event details and schedule
+    - Venue or online link information
+    - Registration QR code for check-in
+    - Calendar invite option
+  </Step>
+</Steps>
+
+### Registration Rules
+
+- You can only register once per free event
+- Duplicate registrations are prevented at the database level
+- Authentication is required before registration
+- You'll see an "Already Registered" message if you've previously registered
+
+## Paid Ticket Purchase Flow
+
+<Steps>
+  <Step title="Select Tickets">
+    Browse available ticket types and select quantities:
+    
+    - Review ticket tiers (VIP, Early Bird, Standard, etc.)
+    - Check pricing and currency
+    - Select quantity for each ticket type
+    - View total price calculation
+  </Step>
+  
+  <Step title="Initiate Payment">
+    Click "Purchase" to begin the payment process:
+    
+    ```typescript
+    // From app/actions/payments.ts:32
+    const result = await initiatePayment({
+      eventId: eventId,
+      tickets: [
+        { ticketId: ticketId, quantity: 2 }
+      ],
+      provider: "paystack" // Default payment provider
+    });
+    ```
+    
+    The system:
+    - Validates ticket availability
+    - Calculates total amount
+    - Generates unique payment reference
+    - Calculates fee breakdown
+  </Step>
+  
+  <Step title="Payment Processing">
+    Complete payment through Paystack:
+    
+    **What happens:**
+    - Payment record created with status: `PENDING`
+    - Paystack payment popup opens
+    - Enter payment details (card, bank transfer, etc.)
+    - Paystack processes the payment
+    - Payment status updates to `PROCESSING` then `COMPLETED`
+    
+    **Payment includes:**
+    - Ticket price
+    - Platform fee (for EventPalour)
+    - Payment provider fee (Paystack)
+    - Total amount to pay
+  </Step>
+  
+  <Step title="Payment Verification">
+    After payment, the system verifies the transaction:
+    
+    ```typescript
+    // From app/actions/payments.ts:226
+    const verification = await verifyAndCompletePayment(reference);
+    ```
+    
+    This process:
+    - Confirms payment with Paystack
+    - Updates payment status
+    - Creates purchased ticket records
+    - Sends confirmation email
+  </Step>
+  
+  <Step title="Ticket Generation">
+    Once verified, your tickets are created:
+    
+    - Each ticket gets a unique ID
+    - Tickets are marked as `SOLD`
+    - QR codes generated for check-in
+    - Digital tickets linked to your account
+  </Step>
+  
+  <Step title="Confirmation">
+    You receive a confirmation email containing:
+    
+    - Ticket details and quantities
+    - Event information
+    - Total amount paid
+    - QR code for entry
+    - Ticket IDs for reference
+  </Step>
+</Steps>
+
+## Ticket Availability
+
+### Checking Availability
+
+Before purchase, the system validates availability:
+
+```typescript
+// From app/actions/payments.ts:84
+if (ticket.availability_quantity !== null) {
+  const totalPurchased = await calculatePurchasedTickets(ticketId);
+  const remaining = ticket.availability_quantity - totalPurchased;
+  
+  if (quantity > remaining) {
+    return error("Not enough tickets available");
+  }
+}
+```
+
+### Unlimited vs Limited Tickets
+
+- **Unlimited**: `availability_quantity = null` - No purchase limit
+- **Limited**: `availability_quantity = number` - Maximum tickets available
+
+### Real-time Updates
+
+Ticket availability is calculated in real-time based on:
+- Current sold tickets
+- Pending payment reservations
+- Transferred tickets
+
+This ensures accurate availability and prevents overselling.
+
+## Payment Breakdown
+
+When you purchase tickets, the payment is split as follows:
+
+```typescript
+// From lib/payments/decimal.ts
+const breakdown = {
+  ticketAmount: ticketPrice,
+  platformFee: calculatedPlatformFee,
+  providerFee: calculatedPaystackFee,
+  totalAmount: ticketPrice + platformFee + providerFee,
+  organizerShare: ticketPrice - platformFee
+};
+```
+
+**Fee structure:**
+- **Ticket price**: Set by event organizer
+- **Platform fee**: EventPalour service fee
+- **Provider fee**: Paystack transaction fee
+- **Total**: Amount charged to your payment method
+
+## Payment Methods
+
+Paystack supports multiple payment methods:
+
+- **Card payments**: Visa, Mastercard, Verve
+- **Bank transfer**: Direct bank transfers
+- **Mobile money**: M-Pesa and other mobile wallets
+- **USSD**: Bank USSD codes
+- **QR codes**: Scan to pay
+
+Availability depends on your location and currency.
+
+## Payment Security
+
+EventPalour implements several security measures:
+
+1. **PCI Compliance**: Payment data never touches our servers
+2. **Paystack Integration**: Secure, certified payment processor
+3. **Reference Tracking**: Unique references prevent duplicate charges
+4. **Verification**: All payments verified before ticket issuance
+5. **Webhook Validation**: Payment webhooks validated with signatures
+
+## Payment Status Tracking
+
+Payments progress through these states:
+
+| Status | Description |
+|--------|-------------|
+| `PENDING` | Payment initiated, awaiting completion |
+| `PROCESSING` | Payment submitted, being verified |
+| `COMPLETED` | Payment successful, tickets issued |
+| `FAILED` | Payment failed, no charge made |
+| `CANCELLED` | Payment cancelled by user |
+| `REFUNDED` | Payment refunded to user |
+
+You can view payment status in your account dashboard.
+
+## Handling Payment Issues
+
+### Payment Failed
+
+If payment fails:
+1. Check your payment method has sufficient funds
+2. Verify your card details are correct
+3. Try an alternative payment method
+4. Contact your bank if issues persist
+5. Payment status updates to `FAILED`
+
+### Payment Cancelled
+
+If you cancel during payment:
+- No charge is made
+- Payment status updates to `CANCELLED`
+- Tickets are not created
+- You can retry the purchase
+
+### Payment Verification Timeout
+
+If verification takes too long:
+1. Check your email for confirmation
+2. View your tickets in dashboard
+3. Contact support if tickets don't appear within 10 minutes
+4. Don't retry payment immediately (may cause duplicate charge)
+
+## Multiple Ticket Types
+
+You can purchase multiple ticket types in one transaction:
+
+```typescript
+// Example: Purchasing different ticket tiers
+await initiatePayment({
+  eventId: eventId,
+  tickets: [
+    { ticketId: "vip-ticket-id", quantity: 1 },
+    { ticketId: "standard-ticket-id", quantity: 3 }
+  ]
+});
+```
+
+The system:
+- Validates each ticket type
+- Calculates combined total
+- Creates separate ticket records
+- Sends one confirmation email
+
+## Post-Purchase
+
+After successful purchase:
+
+<CardGroup cols={2}>
+  <Card title="View Tickets" icon="ticket">
+    Access your digital tickets in the dashboard
+  </Card>
+  <Card title="Download QR Code" icon="qrcode">
+    Download or save your QR code for entry
+  </Card>
+  <Card title="Calendar Integration" icon="calendar">
+    Add event to your calendar
+  </Card>
+  <Card title="Transfer Tickets" icon="arrow-right-arrow-left">
+    Transfer tickets to another attendee if allowed
+  </Card>
+</CardGroup>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="I didn't receive a confirmation email">
+    - Check your spam/junk folder
+    - Verify email address in your profile
+    - Check tickets in your dashboard
+    - Contact support with your payment reference
+  </Accordion>
+  
+  <Accordion title="Event shows sold out but I can't purchase">
+    Tickets may be:
+    - Reserved by others during checkout
+    - In pending payment status
+    - Recently sold (cache delay)
+    
+    Try refreshing the page or check back in a few minutes.
+  </Accordion>
+  
+  <Accordion title="I was charged but didn't receive tickets">
+    1. Check your dashboard for tickets
+    2. Wait 10 minutes for processing
+    3. Check payment verification status
+    4. Contact support with payment reference
+    
+    The system automatically verifies and issues tickets - delays are rare.
+  </Accordion>
+  
+  <Accordion title="Can I purchase tickets for someone else?">
+    Yes, you can:
+    1. Purchase tickets with your account
+    2. Transfer tickets to the recipient
+    3. Provide them with QR codes
+    
+    See the Ticket Management guide for transfer instructions.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<Card title="Ticket Management" icon="list-check" href="/attendees/ticket-management">
+  Learn how to view, transfer, and manage your purchased tickets
+</Card>

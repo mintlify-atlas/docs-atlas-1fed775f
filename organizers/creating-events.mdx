@@ -1,0 +1,361 @@
+---
+title: Creating Events
+description: Step-by-step guide to creating and publishing events on EventPalour
+---
+
+As an event organizer, you can create both free and paid events on EventPalour. This guide walks you through the complete event creation workflow.
+
+## Before You Start
+
+To create events, you need:
+
+- An active workspace
+- At least **Member** role in the workspace
+- **Approved KYC verification** (for paid events only)
+
+Free events can be created immediately after workspace setup. For paid events, complete your [KYC verification](/organizers/kyc-verification) first.
+
+## Event Creation Workflow
+
+The event creation process consists of 6 steps:
+
+<Steps>
+  <Step title="Basic Information">
+    Start by providing the essential details about your event.
+
+    ### Event Image
+    Upload a cover image for your event (optional but recommended):
+    - Supported formats: JPG, PNG, WebP
+    - Maximum file size: 5MB
+    - Recommended dimensions: 1200x630px for best display
+
+    ### Event Title
+    Enter a clear, descriptive title for your event:
+    ```
+    Example: "Tech Innovation Summit 2026"
+    ```
+    - Maximum length: 255 characters
+    - Make it searchable and descriptive
+
+    ### Description
+    Provide a detailed description using the rich text editor:
+    - Minimum: 10 characters
+    - Maximum: 5,000 characters
+    - Support for formatting, links, and lists
+    - Include key details, agenda, speakers, and what attendees will gain
+
+    ### Category
+    Select from predefined categories:
+    - Tech & Innovation
+    - Conference & Expo
+    - Workshop & Training
+    - Networking & Meetup
+    - Music & Concert
+    - Creative Arts
+    - Business & Finance
+    - Charity & Community
+    - Festival
+    - Sports
+    - Food & Drink
+    - Education
+    - Health & Wellness
+    - Travel & Tourism
+    - Other (requires custom category name)
+
+    If you select "Other", you'll be prompted to enter a custom category name.
+  </Step>
+
+  <Step title="Event Details">
+    Configure the type, pricing, and location of your event.
+
+    ### Event Type
+    Choose how your event will be delivered:
+
+    **Physical**
+    - In-person event at a venue
+    - Requires venue address
+
+    **Online**
+    - Virtual event only
+    - Requires meeting link
+    - Supports Google Meet, Zoom, Microsoft Teams, or custom platforms
+
+    **Hybrid**
+    - Both in-person and online
+    - Requires both venue and meeting link
+
+    ### Pricing
+    Select whether your event is free or paid:
+
+    **Free Events**
+    - No payment required from attendees
+    - Available to all organizers
+    - Attendees register directly without tickets
+
+    **Paid Events**
+    - Requires payment through ticket purchase
+    - **Requires approved KYC verification**
+    - Configure ticket types in Step 4
+    - Payments processed through Paystack
+
+    <Warning>
+      If you haven't completed KYC verification, the "Paid" option will not be available. Complete your [KYC verification](/organizers/kyc-verification) to enable paid events.
+    </Warning>
+
+    ### Venue (Physical/Hybrid Events)
+    Enter the complete venue details:
+    ```
+    Example: "Nairobi Tech Hub, Ngong Road, Building 5"
+    ```
+
+    ### Meeting Platform (Online/Hybrid Events)
+    Select your virtual meeting platform:
+    - **Google Meet**: Provide Google Meet link
+    - **Zoom**: Provide Zoom meeting link
+    - **Microsoft Teams**: Provide Teams meeting link
+    - **Custom Link**: Any other platform
+
+    The meeting link will be sent to all registered attendees.
+
+    ### Location
+    Specify the city and country:
+    - **City**: e.g., "Nairobi"
+    - **Country**: e.g., "Kenya"
+
+    This helps attendees discover events near them.
+  </Step>
+
+  <Step title="Date & Time">
+    Schedule when your event will take place.
+
+    ### Start Date & Time
+    Select when your event begins:
+    - Use the date-time picker
+    - Must be in the future
+    - Includes timezone support
+
+    ### End Date & Time
+    Select when your event ends:
+    - Must be after start date/time
+    - Can span multiple days
+
+    ### Recurring Events (Optional)
+    Enable if your event repeats on a schedule:
+
+    **Recurrence Pattern**
+    ```
+    Examples: "weekly", "monthly", "daily"
+    ```
+
+    **Recurrence Days**
+    ```
+    Examples: "Monday, Wednesday, Friday"
+    ```
+
+    <Note>
+      Recurring events create multiple event instances based on your schedule. Each instance can be managed independently.
+    </Note>
+  </Step>
+
+  <Step title="Tickets (Paid Events Only)">
+    Configure ticket types and pricing. This step is skipped for free events.
+
+    ### Adding Ticket Types
+    Create multiple ticket tiers with different pricing:
+
+    Click "Add Ticket Type" for each tier you want to offer.
+
+    For each ticket type, specify:
+
+    **Ticket Name**
+    ```
+    Examples: "Early Bird", "VIP", "Standard", "Student"
+    ```
+
+    **Price**
+    - Enter numeric value (e.g., 1500)
+    - No decimal points required for whole numbers
+    - Minimum: 0 (for free tier within paid event)
+
+    **Currency**
+    - Currently supports: KES (Kenyan Shilling)
+    - Default: KES
+
+    **Quantity (Optional)**
+    - Maximum number of tickets available
+    - Leave empty for unlimited tickets
+    - Example: 100 for limited VIP tickets
+
+    Learn more about ticket configuration in [Ticket Types](/organizers/ticket-types).
+
+    <Tip>
+      Create early bird tickets with lower prices to incentivize early registrations.
+    </Tip>
+  </Step>
+
+  <Step title="Partners & Sponsors (Optional)">
+    Add event partners and sponsors to showcase support.
+
+    Click "Add Partner" to include:
+
+    ### Partner Name
+    ```
+    Example: "TechCorp Kenya"
+    ```
+
+    ### Partner Type
+    - **Sponsor**: Financial supporter
+    - **Partner**: Collaboration partner
+
+    ### Logo (Optional)
+    - Upload partner/sponsor logo
+    - Maximum size: 5MB
+    - Formats: JPG, PNG, WebP
+    - Recommended: Square logos (300x300px)
+
+    ### Website URL (Optional)
+    ```
+    Example: "https://techcorp.co.ke"
+    ```
+    Links will be clickable on the event page.
+
+    Partners appear on your event's public page, giving visibility to your supporters.
+  </Step>
+
+  <Step title="Review & Submit">
+    Review all event details before publishing.
+
+    ### Review Checklist
+    Verify:
+    - Event title and description are accurate
+    - Dates and times are correct (check timezone)
+    - Venue or meeting links are valid
+    - Ticket prices are set correctly (for paid events)
+    - All required fields are complete
+
+    ### Submit Event
+    Click "Submit" to create your event.
+
+    The system will:
+    1. Upload event image and partner logos
+    2. Create the event record
+    3. Set up ticket types (for paid events)
+    4. Generate a unique event ID and short URL
+    5. Set event status to "Active"
+
+    After successful creation:
+    - You'll be redirected to your events page
+    - Your event is immediately visible to attendees
+    - You can manage it from the "Manage Events" page
+  </Step>
+</Steps>
+
+## Event Status
+
+Your event can have one of four statuses:
+
+- **Active**: Event is published and visible to attendees
+- **Inactive**: Event is hidden from public view
+- **Canceled**: Event has been canceled
+- **Postponed**: Event dates have changed
+
+You can update the event status anytime from the Manage Events page.
+
+## After Event Creation
+
+Once your event is created:
+
+1. **Share Your Event**: Copy the event URL and share on social media
+2. **Monitor Registrations**: Track attendee registrations in real-time
+3. **Manage Attendees**: View and manage registered attendees
+4. **Send Updates**: Use announcements to communicate with attendees
+5. **Check Analytics**: Monitor ticket sales and registration trends
+
+## Event URLs
+
+Each event gets two URLs:
+
+**Full URL**
+```
+https://eventpalour.com/events/{eventId}
+```
+
+**Short URL**
+```
+https://eventpalour.com/e/{shortId}
+```
+
+The short URL uses a 6-character ID for easy sharing.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Compelling Event Descriptions">
+    - Start with a hook that captures attention
+    - Use bullet points for key information
+    - Include speaker bios and session topics
+    - Mention what attendees will learn or gain
+    - Add testimonials from past events (if applicable)
+  </Accordion>
+
+  <Accordion title="Pricing Strategy">
+    - Research competitor event pricing
+    - Offer early bird discounts (20-30% off)
+    - Create multiple ticket tiers for different budgets
+    - Set appropriate quantities to create urgency
+    - Consider student/group discounts
+  </Accordion>
+
+  <Accordion title="High-Quality Images">
+    - Use professional event photography
+    - Ensure images are relevant to the event theme
+    - Optimize file size without sacrificing quality
+    - Match your brand colors and style
+    - Show previous event success (if applicable)
+  </Accordion>
+
+  <Accordion title="Clear Date Communication">
+    - Double-check timezone settings
+    - Mention timezone in description for international events
+    - Give clear start and end times
+    - For multi-day events, provide daily schedule
+  </Accordion>
+</AccordionGroup>
+
+## Common Issues
+
+**"Paid pricing option not available"**
+- Complete your KYC verification first
+- Ensure KYC status is "Approved"
+- Navigate to `/workspace/{workspaceId}/kyc` to submit
+
+**"Failed to upload image"**
+- Check file size is under 5MB
+- Ensure file format is JPG, PNG, or WebP
+- Try a different image or compress the file
+
+**"End date/time must be after start date/time"**
+- Verify the dates are in correct order
+- Check timezone settings
+- Ensure end time is later than start time
+
+**"At least one ticket type required for paid events"**
+- Add at least one ticket type with pricing
+- Or switch event pricing to "Free"
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Ticket Types" icon="ticket" href="/organizers/ticket-types">
+    Learn how to configure different ticket types and pricing strategies
+  </Card>
+  <Card title="Attendee Management" icon="users" href="/organizers/attendee-management">
+    Manage registrations, check-ins, and attendee communications
+  </Card>
+  <Card title="KYC Verification" icon="shield-check" href="/organizers/kyc-verification">
+    Complete verification to enable paid events
+  </Card>
+  <Card title="Pricing Strategies" icon="chart-line" href="/organizers/pricing-strategies">
+    Optimize your ticket pricing for maximum revenue
+  </Card>
+</CardGroup>

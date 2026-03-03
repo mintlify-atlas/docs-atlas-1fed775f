@@ -1,80 +1,489 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart Guide
+description: Get started with EventPalour in under 5 minutes
 ---
 
-## Get started in three steps
+## Overview
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide will walk you through creating your first event on EventPalour, from signing up to publishing your event.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+You'll need a valid email address to get started. OAuth authentication with Google or GitHub is also supported.
 </Note>
+
+## Step 1: Create Your Account
+
+EventPalour offers multiple ways to sign up:
+
+<Steps>
+  <Step title="Visit the Sign Up Page">
+    Navigate to `/auth/sign-up` to create your account
+  </Step>
+  <Step title="Choose Your Sign Up Method">
+    - **Email & Password**: Traditional signup with email verification
+    - **Google OAuth**: Sign up with your Google account
+    - **GitHub OAuth**: Sign up with your GitHub account
+  </Step>
+  <Step title="Verify Your Email">
+    If using email/password, check your inbox for a 6-digit verification code
+  </Step>
+</Steps>
+
+### Sign Up Implementation
+
+Here's how the signup process works under the hood:
+
+```typescript
+// From app/(auth)/auth/sign-up/action.ts
+export async function signupAction({
+  email,
+  password,
+}: {
+  email: string;
+  password: string;
+}): Promise<ActionResult> {
+  // Validate email format
+  if (!verifyEmailInput(email)) {
+    return {
+      errorMessage: "Please enter a valid email address!",
+      message: null,
+    };
+  }
+
+  // Check email availability
+  const emailAvailable = await checkEmailAvailability(email);
+  if (emailAvailable) {
+    return {
+      errorMessage: "This email address is already registered.",
+      message: null,
+    };
+  }
+
+  // Verify password strength
+  const strongPassword = await verifyPasswordStrength(password);
+  if (!strongPassword) {
+    return {
+      errorMessage: "Password is too weak. Use at least 8 characters.",
+      message: null,
+    };
+  }
+
+  // Create user and send verification email
+  const user = await createUser({
+    email,
+    username: generateRandomUsername(),
+    avatar: "/images/one.svg",
+    email_verified: false,
+    passwordHash: await hashPassword(password),
+  });
+
+  // Create verification request
+  const emailVerificationRequest = await createEmailVerificationRequest(
+    user.id,
+    user.email
+  );
+
+  return {
+    errorMessage: null,
+    message: "Account created! Check your email for verification code.",
+  };
+}
+```
+
+<Tip>
+For production deployments, ensure you configure the email service properly. EventPalour uses Resend for transactional emails.
+</Tip>
+
+## Step 2: Choose Your Role
+
+After verifying your email, you'll be asked to select your role:
+
+<CardGroup cols={2}>
+  <Card title="Event Organizer" icon="calendar">
+    Create and manage events, sell tickets, and engage attendees
+  </Card>
+  <Card title="Attendee" icon="ticket">
+    Discover events, purchase tickets, and join experiences
+  </Card>
+</CardGroup>
+
+### Role Selection Process
+
+```typescript
+// From app/(auth)/auth/onboarding/action.ts
+export async function updateUserRoleAction({
+  role,
+}: {
+  role: "organizer" | "attendee";
+}): Promise<ActionResult> {
+  // Update user's platform role
+  await db
+    .update(user)
+    .set({
+      platform_role:
+        role === "organizer" ? PlatformRole.ORGANIZER : PlatformRole.ATTENDEE,
+    })
+    .where(eq(user.id, currentUser.id));
+
+  return {
+    errorMessage: null,
+    message: `Role updated to ${role} successfully!`,
+    data: {
+      userRole: role,
+      redirectPath:
+        role === "attendee" ? "/dashboard" : "/auth/onboarding/organizer",
+    },
+  };
+}
+```
+
+<Info>
+You can always change your role later from your account settings.
+</Info>
+
+## Step 3: Create Your Workspace (Organizers Only)
+
+If you selected "Event Organizer", you'll need to create a workspace:
+
+<Steps>
+  <Step title="Enter Business Details">
+    Provide your organization name, description, and contact information
+  </Step>
+  <Step title="Add Social Links (Optional)">
+    Connect your social media profiles (X/Twitter, Facebook, LinkedIn, Instagram, GitHub)
+  </Step>
+  <Step title="Create Workspace">
+    Click "Create Workspace" to complete the setup
+  </Step>
+</Steps>
+
+### Workspace Creation
+
+```typescript
+// From app/(auth)/auth/onboarding/organizer/action.ts
+export async function createWorkspaceAction({
+  businessName,
+  description,
+  website,
+  phone,
+  social_x,
+  social_facebook,
+  social_linkedin,
+  social_instagram,
+  social_github,
+}: WorkspaceData): Promise<ActionResult> {
+  // Validate input
+  if (businessName.length < 2) {
+    return {
+      errorMessage: "Business name must be at least 2 characters!",
+      message: null,
+    };
+  }
+
+  // Generate unique invite code
+  const inviteCode =
+    Math.random().toString(36).substring(2, 15) +
+    Math.random().toString(36).substring(2, 15);
+
+  // Create workspace
+  const [newWorkspace] = await db
+    .insert(tables.workspace)
+    .values({
+      name: businessName,
+      description: description || undefined,
+      website: website || undefined,
+      phone: phone || undefined,
+      social_x: social_x || undefined,
+      social_facebook: social_facebook || undefined,
+      social_linkedin: social_linkedin || undefined,
+      social_instagram: social_instagram || undefined,
+      social_github: social_github || undefined,
+      image_url: "",
+      invite_code: inviteCode,
+      user_id: currentUser.id,
+    })
+    .returning({ id: tables.workspace.id });
+
+  // Add creator as admin
+  await db.insert(tables.workspace_members).values({
+    user_id: currentUser.id,
+    workspace_id: newWorkspace.id,
+    role: WorkspaceRole.ADMIN,
+  });
+
+  return {
+    errorMessage: null,
+    message: "Workspace created successfully!",
+    data: {
+      workspaceId: newWorkspace.id,
+      redirectPath: `/workspace/${newWorkspace.id}`,
+    },
+  };
+}
+```
+
+<Warning>
+Workspace invite codes are automatically generated and should be kept secure. Share them only with team members you want to invite.
+</Warning>
+
+## Step 4: Create Your First Event
+
+Now you're ready to create your first event!
+
+<Steps>
+  <Step title="Navigate to Event Creation">
+    Go to your workspace and click "Create Event"
+  </Step>
+  <Step title="Enter Event Details">
+    Fill in the basic information:
+    - Event title
+    - Description (minimum 10 characters)
+    - Event type (Physical, Online, or Hybrid)
+    - Start and end dates
+  </Step>
+  <Step title="Configure Event Type">
+    **Physical Events**: Add venue, country, and city
+    
+    **Online Events**: Add meeting link (Google Meet, Zoom, Teams, or custom)
+    
+    **Hybrid Events**: Add both venue and meeting link
+  </Step>
+  <Step title="Set Up Pricing">
+    Choose between free or paid events:
+    - **Free**: No charge for attendees
+    - **Paid**: Requires KYC verification (ticket types, pricing, currency)
+  </Step>
+  <Step title="Add Optional Details">
+    - Event category
+    - Event image
+    - Speakers
+    - Partners/Sponsors
+    - Ticket types (for paid events)
+  </Step>
+  <Step title="Publish Event">
+    Review and publish your event to make it live
+  </Step>
+</Steps>
+
+### Event Creation Schema
+
+```typescript
+// Event validation schema from app/actions/events.ts
+const createEventSchema = z
+  .object({
+    title: z
+      .string()
+      .min(1, "Title is required")
+      .max(255, "Title must be 255 characters or less"),
+    description: z
+      .string()
+      .refine(
+        (val) => getPlainTextLength(val) >= 10,
+        { message: "Description must be at least 10 characters" }
+      ),
+    workspaceId: z.string().min(1, "Workspace ID is required"),
+    type: z.nativeEnum(EventType).default(EventType.PHYSICAL),
+    pricing: z.nativeEnum(EventPricing).default(EventPricing.FREE),
+    venue: z.string().optional(),
+    country: z.string().optional(),
+    city: z.string().optional(),
+    startDate: z.date(),
+    endDate: z.date(),
+    meetingLink: z.string().optional(),
+  })
+  .refine((data) => data.endDate > data.startDate, {
+    message: "End date must be after start date",
+    path: ["endDate"],
+  });
+```
+
+### Event Data Model
+
+```typescript
+// From lib/db/schema/events.ts
+export const events = pgTable("events", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  short_id: varchar("short_id", { length: 6 }).notNull().unique(),
+  title: varchar("title", { length: 255 }).notNull(),
+  status: event_status_enum("status").notNull().default(EventStatus.ACTIVE),
+  description: text("description").notNull(),
+  workspace_id: varchar("workspace_id", { length: 16 }).notNull(),
+  category_id: varchar("category_id", { length: 16 }).notNull(),
+  type: event_type_enum("type").notNull().default(EventType.PHYSICAL),
+  pricing: event_pricing_enum("pricing").notNull().default(EventPricing.FREE),
+  venue: text("venue"),
+  country: text("country"),
+  city: text("city"),
+  online_link: text("online_link"),
+  start_date: timestamp("start_date", { withTimezone: true }).notNull(),
+  end_date: timestamp("end_date", { withTimezone: true }).notNull(),
+  is_recurring: boolean("is_recurring").notNull().default(false),
+});
+```
+
+<CodeGroup>
+
+```typescript Physical Event Example
+const physicalEvent = {
+  title: "Tech Conference 2026",
+  description: "<p>Join us for an amazing tech conference featuring industry leaders.</p>",
+  type: EventType.PHYSICAL,
+  pricing: EventPricing.FREE,
+  venue: "Convention Center",
+  country: "Kenya",
+  city: "Nairobi",
+  startDate: new Date("2026-06-01T09:00:00Z"),
+  endDate: new Date("2026-06-01T17:00:00Z"),
+};
+```
+
+```typescript Online Event Example
+const onlineEvent = {
+  title: "Virtual Workshop: Next.js 16",
+  description: "<p>Learn the latest features of Next.js 16 in this hands-on workshop.</p>",
+  type: EventType.ONLINE,
+  pricing: EventPricing.FREE,
+  meetingLink: "https://meet.google.com/abc-defg-hij",
+  startDate: new Date("2026-06-15T14:00:00Z"),
+  endDate: new Date("2026-06-15T16:00:00Z"),
+};
+```
+
+```typescript Hybrid Event Example
+const hybridEvent = {
+  title: "Product Launch Event",
+  description: "<p>Be part of our exciting product launch, in-person or online!</p>",
+  type: EventType.HYBRID,
+  pricing: EventPricing.PAID,
+  venue: "Innovation Hub",
+  country: "Kenya",
+  city: "Nairobi",
+  meetingLink: "https://zoom.us/j/123456789",
+  startDate: new Date("2026-07-01T10:00:00Z"),
+  endDate: new Date("2026-07-01T18:00:00Z"),
+};
+```
+
+</CodeGroup>
+
+<Info>
+**KYC Requirement for Paid Events**
+
+Before creating paid events, organizers must complete KYC verification. This ensures compliance and builds trust with attendees.
+</Info>
+
+## Step 5: Manage Your Event
+
+Once your event is published, you can:
+
+- **View Event Dashboard**: See registrations, ticket sales, and analytics
+- **Manage Attendees**: Track who's registered and check-in status
+- **Send Announcements**: Communicate updates to registered attendees
+- **Add Speakers**: Showcase speakers with bios and social links
+- **Monitor Sales**: Track ticket sales and revenue (for paid events)
+
+### Event Management Features
+
+<CardGroup cols={2}>
+  <Card title="Attendee Management" icon="users">
+    Track registrations, send check-in codes, and manage attendee lists
+  </Card>
+  <Card title="Announcements" icon="megaphone">
+    Send important updates to all registered attendees
+  </Card>
+  <Card title="Speaker Management" icon="microphone">
+    Add speakers with profiles, topics, and scheduled times
+  </Card>
+  <Card title="Analytics" icon="chart-line">
+    View event performance metrics and attendee insights
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<Steps>
+  <Step title="Customize Your Event">
+    Add speakers, partners, and detailed schedules
+  </Step>
+  <Step title="Set Up Ticketing">
+    Create multiple ticket tiers with different pricing
+  </Step>
+  <Step title="Promote Your Event">
+    Share your event link and leverage social media
+  </Step>
+  <Step title="Monitor Registrations">
+    Track attendee signups and send reminders
+  </Step>
+</Steps>
+
+## Common Operations
+
+### Update Event Status
+
+```typescript
+// Event can have different statuses
+export enum EventStatus {
+  DRAFT = "draft",
+  ACTIVE = "active",
+  CANCELLED = "cancelled",
+  COMPLETED = "completed"
+}
+```
+
+### Add Event Speakers
+
+```typescript
+// From lib/db/schema/events.ts
+export const events_speakers = pgTable("events_speakers", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  event_id: varchar("event_id", { length: 16 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }),
+  title: varchar("title", { length: 255 }),
+  talk: text("talk"),
+  bio: text("bio"),
+  image_url: text("image_url"),
+  twitter_handle: varchar("twitter_handle", { length: 255 }),
+  linkedin_url: text("linkedin_url"),
+  status: speaker_status_enum("status").notNull().default(SpeakerStatus.PENDING),
+  scheduled_time: timestamp("scheduled_time", { withTimezone: true }),
+});
+```
+
+### Add Partners/Sponsors
+
+```typescript
+// From lib/db/schema/events.ts
+export const events_partners = pgTable("events_partners", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  event_id: varchar("event_id", { length: 16 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  logo_url: text("logo_url"),
+  website_url: text("website_url"),
+  type: varchar("type", { length: 50 }).notNull().default("sponsor"),
+});
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Email verification code not received">
+    Check your spam folder. The verification email is sent from the configured email service. If you still don't see it, you can request a new code from the verification page.
+  </Accordion>
+  
+  <Accordion title="Can't create paid events">
+    Paid events require KYC verification. Complete the KYC process in your workspace settings before creating paid events.
+  </Accordion>
+  
+  <Accordion title="Event dates validation error">
+    Ensure your end date is after the start date. Both dates must be in the future when creating a new event.
+  </Accordion>
+  
+  <Accordion title="Permission denied when creating events">
+    You need at least Moderator permissions in the workspace to create events. Contact your workspace admin to update your role.
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+For more detailed API documentation and advanced features, check out the [API Reference](/api-reference) section.
+</Tip>

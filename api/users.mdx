@@ -1,0 +1,635 @@
+---
+title: Users API
+description: Manage user authentication, profiles, and account settings
+---
+
+## Overview
+
+The Users API provides authentication helpers, user profile management, and account settings for both organizers and attendees on the EventPalour platform.
+
+## Get Current User
+
+Retrieve the currently authenticated user.
+
+```typescript
+import { getCurrentUser } from '@/app/actions/auth';
+
+const result = await getCurrentUser();
+
+if (result) {
+  console.log('User:', result.user.email);
+  console.log('Session:', result.session.id);
+} else {
+  console.log('Not authenticated');
+}
+```
+
+### Response
+
+<ResponseField name="user" type="User">
+  User object containing:
+  - `id` - User identifier
+  - `email` - Email address
+  - `username` - Display name
+  - `avatar` - Avatar URL
+  - `platform_role` - Role: `organizer` or `attendee`
+  - `email_verified` - Email verification status
+  - `registered_2fa` - 2FA enabled status
+  - `created_at` - Account creation date
+</ResponseField>
+
+<ResponseField name="session" type="Session">
+  Session object with session ID and metadata
+</ResponseField>
+
+Returns `null` if user is not authenticated.
+
+## Require Authentication
+
+Enforce authentication or redirect to sign-in.
+
+```typescript
+import { requireAuth } from '@/app/actions/auth';
+
+const { user, session } = await requireAuth();
+// User is guaranteed to be authenticated here
+```
+
+If user is not authenticated, automatically redirects to `/auth/sign-in`.
+
+### Usage in Server Components
+
+```typescript
+export default async function DashboardPage() {
+  const { user } = await requireAuth();
+  
+  return (
+    <div>
+      <h1>Welcome, {user.username}</h1>
+    </div>
+  );
+}
+```
+
+## Platform Roles
+
+EventPalour has two primary user roles:
+
+<Tabs>
+  <Tab title="Organizer">
+    **Event Organizers**
+    
+    Organizers can:
+    - Create and manage workspaces
+    - Create events (free and paid)
+    - Invite team members
+    - View analytics and revenue
+    - Manage ticket sales
+    - Access organizer dashboard
+    
+    ```typescript
+    platform_role: PlatformRole.ORGANIZER
+    ```
+    
+    <Note>
+    **KYC Required:** Organizers must complete KYC verification to create paid events.
+    </Note>
+  </Tab>
+  
+  <Tab title="Attendee">
+    **Event Attendees**
+    
+    Attendees can:
+    - Browse and search events
+    - Register for free events
+    - Purchase tickets for paid events
+    - View their tickets and QR codes
+    - Receive event updates
+    - Access attendee dashboard
+    
+    ```typescript
+    platform_role: PlatformRole.ATTENDEE
+    ```
+  </Tab>
+</Tabs>
+
+## Require Platform Role
+
+Enforce specific platform role or redirect.
+
+```typescript
+import { requireRole } from '@/app/actions/auth';
+import { PlatformRole } from '@/lib/db/schema/enums';
+
+const { user } = await requireRole(PlatformRole.ORGANIZER);
+// User is guaranteed to be an organizer
+```
+
+### Role Redirection Logic
+
+<Steps>
+  <Step title="Check Authentication">
+    If not authenticated, redirect to `/auth/sign-in`
+  </Step>
+  
+  <Step title="Check Platform Role">
+    If no role set, redirect to `/auth/onboarding`
+  </Step>
+  
+  <Step title="Check Admin Status">
+    If user is platform admin, redirect to `/admin`
+  </Step>
+  
+  <Step title="Validate Role Match">
+    If role doesn't match required:
+    - Attendees → `/dashboard`
+    - Organizers → `/workspace/{workspaceId}`
+  </Step>
+</Steps>
+
+```typescript
+if (user.platform_role !== requiredRole) {
+  if (user.platform_role === PlatformRole.ATTENDEE) {
+    redirect('/dashboard');
+  } else if (user.platform_role === PlatformRole.ORGANIZER) {
+    const workspace = await getUserWorkspace(user.id);
+    redirect(`/workspace/${workspace.id}`);
+  }
+}
+```
+
+## Get User Workspaces
+
+Retrieve all workspaces a user belongs to.
+
+```typescript
+import { getUserWorkspaces } from '@/app/actions/auth';
+
+const workspaces = await getUserWorkspaces(userId);
+
+workspaces.forEach(({ workspace, role, isOwner }) => {
+  console.log(`${workspace.name} - ${role} ${isOwner ? '(Owner)' : ''}`);
+});
+```
+
+### Response
+
+Array of workspace memberships:
+
+<ResponseField name="workspace" type="object">
+  Workspace details:
+  - `id` - Workspace ID
+  - `name` - Workspace name
+  - `image_url` - Logo URL
+  - `invite_code` - Invite code
+  - `created_at` - Creation date
+</ResponseField>
+
+<ResponseField name="role" type="WorkspaceRole">
+  User's role: `admin`, `moderator`, or `member`
+</ResponseField>
+
+<ResponseField name="isOwner" type="boolean">
+  True if user owns the workspace
+</ResponseField>
+
+## Validate Workspace Access
+
+Check if user has access to a workspace.
+
+```typescript
+import { validateWorkspaceAccess } from '@/app/actions/auth';
+
+const { user, workspace, workspaceRole } = 
+  await validateWorkspaceAccess('wks_abc123');
+
+console.log(`Access granted as ${workspaceRole}`);
+```
+
+### Access Validation Rules
+
+<AccordionGroup>
+  <Accordion title="Workspace Owner">
+    If user is the workspace owner:
+    - Automatically granted `admin` role
+    - Full access to all features
+    
+    ```typescript
+    if (workspace.user_id === user.id) {
+      return { workspaceRole: 'admin' };
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Workspace Member">
+    If user is a workspace member:
+    - Role determined by membership record
+    - Access based on role permissions
+  </Accordion>
+  
+  <Accordion title="No Access">
+    If user is not a member:
+    - Redirected to first available workspace
+    - Or to `/workspace/unauthorized` if no workspaces
+  </Accordion>
+</AccordionGroup>
+
+## Require Workspace Role
+
+Enforce minimum workspace role.
+
+```typescript
+import { requireWorkspaceRole } from '@/app/actions/auth';
+import { WorkspaceRole } from '@/lib/db/schema/enums';
+
+const { user, workspace, workspaceRole } = 
+  await requireWorkspaceRole('wks_abc123', WorkspaceRole.MODERATOR);
+
+// User has at least moderator role
+```
+
+### Role Hierarchy
+
+```typescript
+const roleHierarchy = {
+  member: 1,      // View-only access
+  moderator: 2,   // Can create events
+  admin: 3        // Full management
+};
+
+// Check if user has required role or higher
+if (roleHierarchy[userRole] < roleHierarchy[requiredRole]) {
+  redirect('/workspace/unauthorized');
+}
+```
+
+## Check Workspace Role
+
+Check role without redirecting (for conditional rendering).
+
+```typescript
+import { checkWorkspaceRole } from '@/app/actions/auth';
+import { WorkspaceRole } from '@/lib/db/schema/enums';
+
+const result = await checkWorkspaceRole(
+  'wks_abc123',
+  WorkspaceRole.ADMIN
+);
+
+if (result.hasAccess) {
+  // Show admin-only features
+}
+```
+
+### Response
+
+<ResponseField name="hasAccess" type="boolean">
+  True if user has required role or higher
+</ResponseField>
+
+<ResponseField name="user" type="User">
+  User object (if access granted)
+</ResponseField>
+
+<ResponseField name="workspace" type="Workspace">
+  Workspace object (if access granted)
+</ResponseField>
+
+<ResponseField name="workspaceRole" type="WorkspaceRole">
+  User's actual role (if access granted)
+</ResponseField>
+
+## Account Settings
+
+Update user account settings.
+
+### Update Username
+
+```typescript
+import { updateUsername } from '@/app/actions/workspace';
+
+const result = await updateUsername('johndoe');
+
+if (result.success) {
+  console.log('Username updated');
+}
+```
+
+**Validation:**
+- Minimum 3 characters
+- Maximum 255 characters
+- Only letters, numbers, underscores, and hyphens
+- Must be unique
+
+```typescript
+const schema = z.string()
+  .min(3, "Username must be at least 3 characters")
+  .max(255)
+  .regex(
+    /^[a-zA-Z0-9_-]+$/,
+    "Username can only contain letters, numbers, underscores, and hyphens"
+  );
+```
+
+### Change Email
+
+Update user email address.
+
+```typescript
+import { changeEmail } from '@/app/actions/workspace';
+
+const result = await changeEmail(
+  'newemail@example.com',
+  '2fa_token' // Required if 2FA enabled
+);
+
+if (result.success) {
+  console.log('Email updated - verification required');
+}
+```
+
+<Warning>
+**Email Verification Required:** After changing email, the account is marked as unverified. User must verify the new email address.
+</Warning>
+
+**Security:**
+- Requires 2FA verification if enabled
+- New email must not be in use
+- Email is normalized (trimmed, lowercased)
+
+### Change Password
+
+Update user password.
+
+```typescript
+import { changePassword } from '@/app/actions/workspace';
+
+const result = await changePassword(
+  'currentPassword123',
+  'newSecurePassword456',
+  '2fa_token' // Required if 2FA enabled
+);
+
+if (result.success) {
+  console.log('Password changed successfully');
+}
+```
+
+**Validation:**
+- Current password must be correct
+- New password must meet strength requirements
+- Requires 2FA if enabled
+- Not available for OAuth-only accounts
+
+```typescript
+if (!currentPasswordHash) {
+  return { error: "Password change not available for OAuth accounts" };
+}
+```
+
+## Delete Account
+
+Permanently delete user account.
+
+```typescript
+import { deleteUserAccount } from '@/app/actions/workspace';
+
+const result = await deleteUserAccount(
+  'delete my account', // Must type exactly
+  '2fa_token' // Required if 2FA enabled
+);
+
+if (result.success) {
+  // User deleted, redirected to sign-in
+}
+```
+
+### Deletion Requirements
+
+<Steps>
+  <Step title="Confirmation">
+    User must type exactly "DELETE MY ACCOUNT" to confirm.
+  </Step>
+  
+  <Step title="2FA Verification">
+    If 2FA is enabled, valid token required.
+  </Step>
+  
+  <Step title="Workspace Check">
+    User must not own any workspaces:
+    
+    ```typescript
+    const ownedWorkspaces = await db.query.workspace.findMany({
+      where: eq(tables.workspace.user_id, user.id)
+    });
+    
+    if (ownedWorkspaces.length > 0) {
+      return { error: "Must transfer or delete workspaces first" };
+    }
+    ```
+  </Step>
+  
+  <Step title="Data Cleanup">
+    System deletes:
+    - All workspace memberships
+    - All user sessions
+    - User account record
+  </Step>
+</Steps>
+
+<Warning>
+**Irreversible Action:** Account deletion cannot be undone. All data is permanently removed.
+</Warning>
+
+## Sign Out
+
+Sign out the current user.
+
+```typescript
+import { signOut } from '@/app/actions/auth';
+
+const result = await signOut();
+
+if (result.success) {
+  // Session invalidated
+  // Redirect to home page
+}
+```
+
+Sign out process:
+1. Invalidates current session in database
+2. Deletes session cookie
+3. User is logged out
+
+```typescript
+await invalidateSession(session.id);
+await deleteSessionTokenCookie();
+```
+
+## User Schema
+
+The complete user object structure:
+
+```typescript
+interface User {
+  id: string;
+  email: string;
+  username: string | null;
+  avatar: string | null;
+  platform_role: PlatformRole | null;
+  email_verified: boolean;
+  registered_2fa: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+enum PlatformRole {
+  ORGANIZER = "organizer",
+  ATTENDEE = "attendee"
+}
+```
+
+## OAuth Accounts
+
+Check if user has OAuth authentication.
+
+```typescript
+import { checkUserHasOAuth } from '@/app/actions/workspace';
+
+const result = await checkUserHasOAuth(userId);
+
+if (result.hasOAuth) {
+  console.log(`User signed in via ${result.provider}`);
+  // Some features may not be available (e.g., password change)
+}
+```
+
+**OAuth Providers:**
+- Google
+- GitHub
+- (More providers coming soon)
+
+<Note>
+**Password Management:** Users who sign in exclusively via OAuth cannot change their password through the API.
+</Note>
+
+## 2FA Verification
+
+Sensitive operations require 2FA verification when enabled:
+
+```typescript
+if (user.registered_2fa) {
+  if (!verificationToken) {
+    return { error: "2FA verification required", requires2FA: true };
+  }
+  
+  const { verify2FAToken } = await import(
+    '@/lib/server/two-factor-verification'
+  );
+  
+  const verification = await verify2FAToken(verificationToken);
+  
+  if (!verification.valid) {
+    return { error: "2FA verification failed" };
+  }
+}
+```
+
+**Operations requiring 2FA:**
+- Change email
+- Change password
+- Transfer workspace ownership
+- Delete workspace
+- Delete account
+
+## Error Handling
+
+Common user API errors:
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `"Authentication required"` | User not signed in | Call requireAuth() or sign in |
+| `"Username is already taken"` | Duplicate username | Choose different username |
+| `"Email is already in use"` | Duplicate email | Use different email |
+| `"Current password is incorrect"` | Wrong password provided | Verify current password |
+| `"2FA verification required"` | 2FA enabled but no token | Provide valid 2FA token |
+| `"Password change not available for OAuth accounts"` | OAuth-only account | Cannot set password |
+| `"Must transfer or delete workspaces first"` | User owns workspaces | Transfer or delete workspaces |
+
+## Complete Example
+
+Complete user profile management:
+
+```typescript
+import { 
+  requireAuth,
+  updateUsername,
+  changeEmail,
+  getUserWorkspaces
+} from '@/app/actions/auth';
+import { WorkspaceRole } from '@/lib/db/schema/enums';
+
+async function updateUserProfile() {
+  // 1. Ensure user is authenticated
+  const { user } = await requireAuth();
+  
+  console.log('Current user:', user.email);
+  
+  // 2. Update username
+  const usernameResult = await updateUsername('johndoe2024');
+  
+  if (!usernameResult.success) {
+    console.error('Username update failed:', usernameResult.error);
+    return;
+  }
+  
+  console.log('Username updated');
+  
+  // 3. Update email (requires 2FA if enabled)
+  let emailResult;
+  
+  if (user.registered_2fa) {
+    // Prompt user for 2FA token
+    const token = await prompt2FA();
+    emailResult = await changeEmail('newemail@example.com', token);
+  } else {
+    emailResult = await changeEmail('newemail@example.com');
+  }
+  
+  if (!emailResult.success) {
+    console.error('Email update failed:', emailResult.error);
+    return;
+  }
+  
+  console.log('Email updated - please verify new email');
+  
+  // 4. Get user workspaces
+  const workspaces = await getUserWorkspaces(user.id);
+  
+  console.log('User workspaces:');
+  workspaces.forEach(({ workspace, role, isOwner }) => {
+    console.log(
+      `- ${workspace.name}: ${role}${isOwner ? ' (Owner)' : ''}`
+    );
+  });
+  
+  console.log('Profile update complete');
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Workspaces API" icon="users" href="/api/workspaces">
+    Manage workspace memberships
+  </Card>
+  <Card title="Authentication" icon="lock" href="/features/authentication">
+    Learn about auth features
+  </Card>
+  <Card title="2FA Setup" icon="shield" href="/features/two-factor-auth">
+    Enable two-factor authentication
+  </Card>
+  <Card title="Profile Settings" icon="user-gear" href="/features/profile-settings">
+    Manage account settings
+  </Card>
+</CardGroup>

@@ -1,0 +1,407 @@
+---
+title: 'Workspace Settings'
+description: 'Configure and customize your workspace profile, branding, and preferences'
+icon: 'gear'
+---
+
+Workspace settings allow you to customize your workspace profile, manage branding, update social links, and perform critical administrative actions.
+
+## Access Requirements
+
+<Info>
+  **Minimum Role**: Moderator
+  
+  You need at least Moderator permissions to access workspace settings. Members cannot view or modify settings.
+</Info>
+
+## Settings Sections
+
+### General Settings
+
+Manage basic workspace information and identification.
+
+<Steps>
+  <Step title="Navigate to Settings">
+    From your workspace dashboard, click **Settings** in the sidebar.
+  </Step>
+
+  <Step title="Update Workspace Name">
+    Change your workspace name in the **General** section:
+    
+    1. Enter new workspace name (minimum 2 characters)
+    2. Click **Save** to update
+    3. Name updates across all events and pages
+
+    <Note>
+      The workspace name appears on all your events, tickets, and communications. Choose a name that represents your brand.
+    </Note>
+  </Step>
+
+  <Step title="View Workspace URL">
+    Your workspace URL is displayed in a read-only field:
+    ```
+    eventpalour.com/workspace/{workspaceId}
+    ```
+    
+    Click the copy button to copy the URL to your clipboard.
+
+    <Warning>
+      Workspace IDs are permanent and cannot be changed.
+    </Warning>
+  </Step>
+</Steps>
+
+### Social Links
+
+Connect your social media profiles to build credibility and help attendees discover your brand.
+
+#### Supported Platforms
+
+<CardGroup cols={2}>
+  <Card title="X (Twitter)" icon="x-twitter">
+    Share updates and engage with attendees
+  </Card>
+  <Card title="Facebook" icon="facebook">
+    Build community and share event information
+  </Card>
+  <Card title="LinkedIn" icon="linkedin">
+    Professional networking and B2B events
+  </Card>
+  <Card title="Instagram" icon="instagram">
+    Visual content and event highlights
+  </Card>
+  <Card title="GitHub" icon="github">
+    Open source projects and tech events
+  </Card>
+</CardGroup>
+
+#### Adding Social Links
+
+<Steps>
+  <Step title="Open Social Links Form">
+    Navigate to the **Social Links** section in settings.
+  </Step>
+
+  <Step title="Enter Profile URLs">
+    Add full URLs for each platform:
+    - `https://x.com/yourhandle`
+    - `https://facebook.com/yourpage`
+    - `https://linkedin.com/company/yourcompany`
+    - `https://instagram.com/yourhandle`
+    - `https://github.com/yourhandle`
+
+    All fields are optional - add only the platforms you use.
+  </Step>
+
+  <Step title="Save Changes">
+    Click **Save** to update your social links. They'll appear on your workspace profile and event pages.
+  </Step>
+</Steps>
+
+### Branding
+
+Customize your workspace visual identity with a professional logo.
+
+#### Logo Guidelines
+
+<AccordionGroup>
+  <Accordion title="File Format">
+    - **Accepted**: PNG, JPG/JPEG
+    - **Recommended**: PNG for transparency
+  </Accordion>
+
+  <Accordion title="File Size">
+    - **Maximum**: 2MB
+    - **Recommended**: Under 500KB for faster loading
+  </Accordion>
+
+  <Accordion title="Dimensions">
+    - **Recommended**: 400x400px (square)
+    - **Aspect Ratio**: 1:1 preferred
+    - **Minimum**: 200x200px
+  </Accordion>
+
+  <Accordion title="Design Tips">
+    - Use high contrast for visibility
+    - Ensure readability at small sizes
+    - Avoid complex details
+    - Test on light and dark backgrounds
+  </Accordion>
+</AccordionGroup>
+
+#### Uploading a Logo
+
+<Steps>
+  <Step title="Navigate to Branding">
+    Scroll to the **Branding** section in settings.
+  </Step>
+
+  <Step title="Click Upload Logo">
+    Click the **Upload Logo** button to open the file picker.
+  </Step>
+
+  <Step title="Select Image File">
+    Choose a PNG or JPG file under 2MB. The system will:
+    - Validate file type and size
+    - Create a preview
+    - Process and upload the image
+  </Step>
+
+  <Step title="Confirm Upload">
+    Your logo updates immediately across:
+    - Workspace profile
+    - All events
+    - Team member pages
+    - Email communications
+  </Step>
+</Steps>
+
+#### Default Avatar
+
+<Info>
+  If you don't upload a custom logo, EventPalour automatically generates a default avatar using your workspace name initials.
+  
+  Example: "Acme Marketing" → "AM"
+</Info>
+
+### Notifications
+
+<Note>
+  **Coming Soon**
+  
+  Email notifications, push notifications, and weekly digest features are currently in development.
+</Note>
+
+Planned notification features:
+- Email updates about workspace activity
+- Push notifications for mobile devices
+- Weekly summary of workspace metrics
+
+## Danger Zone (Owner Only)
+
+<Warning>
+  The following actions are **irreversible** and available only to workspace owners. Proceed with extreme caution.
+</Warning>
+
+### Transfer Ownership
+
+Transfer complete workspace control to another user.
+
+<Steps>
+  <Step title="Open Transfer Dialog">
+    In the **Danger Zone**, click **Transfer** next to "Transfer Ownership".
+  </Step>
+
+  <Step title="Enter New Owner Email">
+    Provide the email address of the new workspace owner. They must:
+    - Have an EventPalour account (or will be prompted to create one)
+    - Accept the transfer
+  </Step>
+
+  <Step title="Confirm Transfer">
+    Type `TRANSFER` (case-insensitive) to confirm the action.
+
+    <Warning>
+      After transfer:
+      - You become a regular member
+      - New owner gets full control
+      - You cannot reverse this action
+    </Warning>
+  </Step>
+
+  <Step title="Complete Transfer">
+    Click **Transfer** to execute. If you have 2FA enabled, you'll be prompted to verify.
+  </Step>
+</Steps>
+
+### Delete Workspace
+
+Permanently delete the workspace and all associated data.
+
+<Warning>
+  This action is **permanent** and **cannot be undone**. All data will be lost, including:
+  - All events and event data
+  - All team members and invitations
+  - All billing and transaction history
+  - All workspace settings
+</Warning>
+
+<Steps>
+  <Step title="Open Delete Dialog">
+    In the **Danger Zone**, click **Delete Workspace**.
+  </Step>
+
+  <Step title="Confirm Deletion">
+    Type `DELETE` (case-insensitive) to confirm.
+  </Step>
+
+  <Step title="Verify with 2FA (if enabled)">
+    If you have two-factor authentication enabled, you'll need to verify with your 2FA code.
+  </Step>
+
+  <Step title="Complete Deletion">
+    Click **Delete Workspace** to permanently delete. You'll be redirected to:
+    - Your next available workspace (if you're a member of others)
+    - Dashboard (if you have no other workspaces)
+  </Step>
+</Steps>
+
+### Delete Account
+
+Permanently delete your user account and all associated data.
+
+<Warning>
+  **Prerequisites**: Before deleting your account, you must:
+  - Transfer ownership of all workspaces you own, OR
+  - Delete all workspaces you own
+  
+  Account deletion is **permanent** and **cannot be undone**.
+</Warning>
+
+<Steps>
+  <Step title="Prepare Account">
+    Ensure you have no owned workspaces:
+    - Transfer ownership to other users
+    - Delete workspaces you no longer need
+  </Step>
+
+  <Step title="Open Delete Account Dialog">
+    In the **Danger Zone**, click **Delete Account**.
+  </Step>
+
+  <Step title="Confirm Deletion">
+    Type `DELETE MY ACCOUNT` (case-insensitive) to confirm.
+  </Step>
+
+  <Step title="Verify with 2FA (if enabled)">
+    Complete two-factor authentication verification if enabled.
+  </Step>
+
+  <Step title="Complete Account Deletion">
+    Click **Delete Account** to permanently delete your account. You'll:
+    - Lose access to all workspaces
+    - Have all personal data removed
+    - Be signed out immediately
+    - Be redirected to the sign-in page
+  </Step>
+</Steps>
+
+## Two-Factor Authentication
+
+Critical workspace actions require 2FA verification when enabled:
+
+- Transfer workspace ownership
+- Delete workspace
+- Delete account
+
+<Info>
+  Set up 2FA in your account settings to add an extra layer of security for sensitive operations.
+</Info>
+
+## Settings Schema
+
+Workspace settings data structure:
+
+```typescript
+{
+  // General
+  name: string;
+  description: string | null;
+  
+  // Contact
+  website: string | null;
+  phone: string | null;
+  
+  // Social Media
+  social_x: string | null;
+  social_facebook: string | null;
+  social_linkedin: string | null;
+  social_instagram: string | null;
+  social_github: string | null;
+  
+  // Branding
+  image_url: string;  // Logo URL or empty string
+  
+  // System
+  invite_code: string;      // Unique invite code
+  user_id: string;          // Owner ID
+  created_at: Date;
+  updated_at: Date;
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Keep Information Current">
+    Regularly update your workspace profile, social links, and contact information to maintain credibility with attendees.
+  </Accordion>
+
+  <Accordion title="Use Professional Branding">
+    Upload a high-quality logo that represents your brand. Consistent branding builds trust and recognition.
+  </Accordion>
+
+  <Accordion title="Verify Before Critical Actions">
+    Always double-check before transferring ownership or deleting workspaces. These actions cannot be reversed.
+  </Accordion>
+
+  <Accordion title="Enable 2FA for Security">
+    Protect your workspace from unauthorized changes by enabling two-factor authentication on your account.
+  </Accordion>
+
+  <Accordion title="Document Your Settings">
+    Keep a record of your workspace settings, especially social links and invite codes, for reference and backup.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Cannot access settings">
+    Ensure you have at least Moderator role. Members cannot access workspace settings. Contact your workspace admin for role upgrade.
+  </Accordion>
+
+  <Accordion title="Logo upload fails">
+    Verify:
+    - File is PNG or JPG format
+    - File size is under 2MB
+    - File is not corrupted
+    - You have a stable internet connection
+  </Accordion>
+
+  <Accordion title="Changes not saving">
+    Check:
+    - All required fields are filled
+    - Form validation passes
+    - You clicked the Save button
+    - No browser console errors
+  </Accordion>
+
+  <Accordion title="Cannot transfer ownership">
+    Ensure:
+    - You are the workspace owner
+    - New owner email is valid
+    - You typed 'TRANSFER' correctly
+    - 2FA verification succeeded (if enabled)
+  </Accordion>
+
+  <Accordion title="Delete workspace blocked">
+    Common reasons:
+    - You typed 'DELETE' incorrectly
+    - 2FA verification failed
+    - Server error occurred
+    
+    Try again or contact support if the issue persists.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Manage Team" icon="users" href="/workspace/team-collaboration">
+    Invite members and assign roles
+  </Card>
+  <Card title="View Billing" icon="credit-card" href="/workspace/billing">
+    Track revenue and manage withdrawals
+  </Card>
+</CardGroup>

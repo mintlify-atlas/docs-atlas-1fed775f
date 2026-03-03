@@ -1,0 +1,371 @@
+---
+title: Event Management
+description: Create, edit, and manage events with comprehensive event lifecycle features
+---
+
+EventPalour provides powerful event management capabilities including event creation, categorization, status management, photo links, and announcements.
+
+## Event Types
+
+EventPalour supports three types of events:
+
+- **Physical**: In-person events at a physical venue
+- **Online**: Virtual events with online meeting links
+- **Hybrid**: Events that combine both physical and online attendance
+
+## Event Pricing Models
+
+Events can be configured with different pricing options:
+
+- **Free**: No cost to attend, users register for free
+- **Paid**: Requires ticket purchase with integrated payment processing
+
+## Creating Events
+
+### Event Creation Workflow
+
+<Steps>
+  <Step title="Validate Workspace Access">
+    Users must have at least Moderator role to create events.
+  </Step>
+  
+  <Step title="Provide Event Details">
+    Enter title, description, category, dates, and venue information.
+  </Step>
+  
+  <Step title="Configure Event Type">
+    Choose between Physical, Online, or Hybrid event types.
+  </Step>
+  
+  <Step title="Set Pricing">
+    Select Free or Paid, and configure ticket types for paid events.
+  </Step>
+  
+  <Step title="Add Optional Details">
+    Upload event images, add partners/sponsors, and configure recurring events.
+  </Step>
+</Steps>
+
+### Create Event Action
+
+```typescript /home/daytona/workspace/source/app/actions/events.ts:100-148
+export async function createEvent(
+  _prevState: unknown,
+  formData: FormData,
+): Promise<{ success: boolean; eventId?: string; error?: string }> {
+  try {
+    // Validate workspace access
+    const workspaceId = formData.get("workspaceId") as string;
+    if (!workspaceId) {
+      return { success: false, error: "Workspace ID is required" };
+    }
+
+    let workspaceRole: WorkspaceRole;
+    let currentUser: { id: string };
+    try {
+      const accessResult = await validateWorkspaceAccess(workspaceId);
+      workspaceRole = accessResult.workspaceRole;
+      currentUser = accessResult.user;
+    } catch (accessError) {
+      // Handle access errors
+    }
+
+    // Check if user has MODERATOR role or higher
+    const roleHierarchy = {
+      [WorkspaceRole.MEMBER]: 1,
+      [WorkspaceRole.MODERATOR]: 2,
+      [WorkspaceRole.ADMIN]: 3,
+    };
+
+    if (roleHierarchy[workspaceRole] < roleHierarchy[WorkspaceRole.MODERATOR]) {
+      return {
+        success: false,
+        error: "You need at least Moderator permissions to create events",
+      };
+    }
+    // ... rest of implementation
+  }
+}
+```
+
+### Validation Schema
+
+Event data is validated using Zod:
+
+```typescript /home/daytona/workspace/source/app/actions/events.ts:40-94
+const createEventSchema = z
+  .object({
+    title: z
+      .string()
+      .min(1, "Title is required")
+      .max(255, "Title must be 255 characters or less"),
+    description: z
+      .string()
+      .refine(
+        (val) => {
+          const textLength = getPlainTextLength(val);
+          return textLength >= 10;
+        },
+        { message: "Description must be at least 10 characters" },
+      ),
+    workspaceId: z.string().min(1, "Workspace ID is required"),
+    category: z.string().optional(),
+    type: z.nativeEnum(EventType).default(EventType.PHYSICAL),
+    pricing: z.nativeEnum(EventPricing).default(EventPricing.FREE),
+    venue: z.string().optional(),
+    country: z.string().optional(),
+    city: z.string().optional(),
+    startDate: z
+      .string()
+      .or(z.date())
+      .transform((val) => (typeof val === "string" ? new Date(val) : val)),
+    endDate: z
+      .string()
+      .or(z.date())
+      .transform((val) => (typeof val === "string" ? new Date(val) : val)),
+    isRecurring: z.boolean().default(false),
+  })
+  .refine((data) => data.endDate > data.startDate, {
+    message: "End date must be after start date",
+    path: ["endDate"],
+  });
+```
+
+## Event Categories
+
+Events are organized into categories for better discoverability:
+
+### Default Categories
+
+- Tech
+- Hackathon
+- Conference
+- Workshop
+- Networking
+- Seminar
+- Webinar
+- Meetup
+- And many more...
+
+### Custom Categories
+
+Organizers can create custom categories for their workspace:
+
+```typescript /home/daytona/workspace/source/app/actions/events.ts:236-244
+if (validatedData.category === "other" && validatedData.customCategory) {
+  // Create a new category for custom category
+  const [newCategory] = await db
+    .insert(tables.events_categories)
+    .values({
+      workspace_id: workspaceId,
+      name: validatedData.customCategory,
+    })
+    .returning();
+  categoryId = newCategory.id;
+}
+```
+
+## Event Status Management
+
+Events can be in different states throughout their lifecycle:
+
+- **Active**: Event is live and visible to users
+- **Inactive**: Event is hidden from public view
+- **Cancelled**: Event has been cancelled
+- **Postponed**: Event has been postponed to a later date
+
+### Toggle Event Status
+
+```typescript /home/daytona/workspace/source/app/actions/events.ts:728-776
+export async function toggleEventStatus(
+  eventId: string,
+  status: EventStatus,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const event = await db.query.events.findFirst({
+      where: eq(tables.events.id, eventId),
+      with: { workspace: true },
+    });
+
+    if (!event) {
+      return { success: false, error: "Event not found" };
+    }
+
+    // Validate workspace access
+    const { workspaceRole } = await validateWorkspaceAccess(event.workspace_id);
+
+    // Update event status
+    await db
+      .update(tables.events)
+      .set({ status, updated_at: new Date() })
+      .where(eq(tables.events.id, eventId));
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: "Failed to update event status" };
+  }
+}
+```
+
+## Event Images and Photo Links
+
+Events can have associated images and photo links:
+
+```typescript /home/daytona/workspace/source/app/actions/events.ts:388-400
+if (eventImageUrl) {
+  try {
+    await db.insert(tables.event_photo_links).values({
+      id: generateNanoId(),
+      event_id: newEvent.id,
+      link: eventImageUrl,
+      description: "Event main image",
+    });
+  } catch (imageError) {
+    console.error("Error creating event image link:", imageError);
+    // Don't fail the event creation if image link fails
+  }
+}
+```
+
+## Partners and Sponsors
+
+Add partners and sponsors to events:
+
+```typescript /home/daytona/workspace/source/app/actions/events.ts:443-467
+if (validatedData.partners) {
+  try {
+    const partnersData = JSON.parse(validatedData.partners) as Array<{
+      name: string;
+      logoUrl?: string;
+      websiteUrl?: string;
+      type?: "sponsor" | "partner";
+    }>;
+
+    for (const partnerData of partnersData) {
+      if (partnerData.name?.trim()) {
+        await db.insert(tables.events_partners).values({
+          event_id: newEvent.id,
+          name: partnerData.name.trim(),
+          logo_url: partnerData.logoUrl || null,
+          website_url: partnerData.websiteUrl || null,
+          type: (partnerData.type || "sponsor") as "sponsor" | "partner",
+        });
+      }
+    }
+  }
+}
+```
+
+## Recurring Events
+
+Create events that repeat on a schedule:
+
+```typescript /home/daytona/workspace/source/lib/db/schema/events.ts:63-65
+is_recurring: boolean("is_recurring").notNull().default(false),
+recurrence_pattern: varchar("recurrence_pattern", { length: 32 }), // e.g. weekly, monthly
+recurrence_days: text("recurrence_days"), // comma-separated or JSON string of days
+```
+
+## Update Events
+
+### Update Event Details
+
+```typescript /home/daytona/workspace/source/app/actions/events.ts:903-1025
+export async function updateEvent(
+  eventId: string,
+  data: {
+    title?: string;
+    description?: string;
+    type?: EventType;
+    pricing?: EventPricing;
+    venue?: string;
+    startDate?: Date | string;
+    endDate?: Date | string;
+    eventImageUrl?: string;
+  },
+): Promise<{ success: boolean; error?: string }> {
+  // Build update object
+  const updateData: Record<string, unknown> = {
+    updated_at: new Date(),
+  };
+
+  if (data.title !== undefined) updateData.title = data.title;
+  if (data.description !== undefined) updateData.description = data.description;
+  // ... more fields
+
+  // Update event
+  await db
+    .update(tables.events)
+    .set(updateData)
+    .where(eq(tables.events.id, eventId));
+
+  return { success: true };
+}
+```
+
+## Delete Events
+
+Only workspace admins can delete events:
+
+```typescript /home/daytona/workspace/source/app/actions/events.ts:792-827
+export async function deleteEvent(
+  eventId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const event = await db.query.events.findFirst({
+      where: eq(tables.events.id, eventId),
+      with: { workspace: true },
+    });
+
+    if (!event) {
+      return { success: false, error: "Event not found" };
+    }
+
+    // Validate workspace access
+    const { workspaceRole } = await validateWorkspaceAccess(event.workspace_id);
+
+    // Check if user has ADMIN role
+    if (workspaceRole !== WorkspaceRole.ADMIN) {
+      return {
+        success: false,
+        error: "You need Admin permissions to delete events",
+      };
+    }
+
+    // Delete event (cascade will handle related records)
+    await db.delete(tables.events).where(eq(tables.events.id, eventId));
+
+    return { success: true };
+  }
+}
+```
+
+## Event Schema
+
+```typescript /home/daytona/workspace/source/lib/db/schema/events.ts:40-73
+export const events = pgTable("events", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  short_id: varchar("short_id", { length: 6 }).notNull().unique(),
+  title: varchar("title", { length: 255 }).notNull(),
+  status: event_status_enum("status").notNull().default(EventStatus.ACTIVE),
+  description: text("description").notNull(),
+  workspace_id: varchar("workspace_id", { length: 16 }).notNull(),
+  category_id: varchar("category_id", { length: 16 }).notNull(),
+  type: event_type_enum("type").notNull().default(EventType.PHYSICAL),
+  pricing: event_pricing_enum("pricing").notNull().default(EventPricing.FREE),
+  venue: text("venue"),
+  country: text("country"),
+  city: text("city"),
+  online_link: text("online_link"),
+  queue_counter: integer("queue_counter").notNull().default(0),
+  start_date: timestamp("start_date", { withTimezone: true }).notNull(),
+  end_date: timestamp("end_date", { withTimezone: true }).notNull(),
+  is_recurring: boolean("is_recurring").notNull().default(false),
+  recurrence_pattern: varchar("recurrence_pattern", { length: 32 }),
+  recurrence_days: text("recurrence_days"),
+});
+```
+
+<Note>
+  Events automatically receive a unique 6-character short ID for easy sharing and URL generation.
+</Note>

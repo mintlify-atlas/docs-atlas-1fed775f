@@ -1,0 +1,478 @@
+---
+title: Ticket Management
+description: View, transfer, and manage your event tickets
+---
+
+After purchasing tickets or registering for events, you can manage them through your attendee dashboard. This includes viewing ticket details, transferring tickets to others, and tracking ticket status.
+
+## Viewing Your Tickets
+
+Access all your tickets from the attendee dashboard:
+
+```typescript
+// From dal/attendee.ts:232
+const tickets = await getUserPurchasedTickets(userId);
+```
+
+Your ticket list includes:
+- **Purchased tickets**: All paid tickets you've bought
+- **Free registrations**: Events you've registered for
+- **Transferred tickets**: Tickets transferred to you
+- **Historical tickets**: Past event tickets
+
+### Ticket Information
+
+Each ticket displays:
+
+- **Event details**: Title, date, venue, city, country
+- **Ticket type**: VIP, Standard, Early Bird, etc.
+- **Price and currency**: Amount paid (or "Free")
+- **Quantity**: Number of tickets in this purchase
+- **Purchase date**: When you acquired the ticket
+- **Ticket status**: Current validity status
+- **QR code**: For event check-in
+- **Transfer status**: Whether ticket was transferred
+
+## Ticket Statuses
+
+Tickets progress through various states during their lifecycle:
+
+### Active Statuses
+
+| Status | Description | Can Use? |
+|--------|-------------|----------|
+| `AVAILABLE` | Newly created, ready to use | Yes |
+| `SOLD` | Purchased and valid | Yes |
+| `RESERVED` | Temporarily held during checkout | Pending |
+
+### Final Statuses
+
+| Status | Description | Can Use? |
+|--------|-------------|----------|
+| `USED` | Scanned at event entry | No (already used) |
+| `TRANSFERRED` | Given to another attendee | No (no longer yours) |
+| `CANCELLED` | Cancelled by organizer | No |
+| `REFUNDED` | Refunded to your account | No |
+| `EXPIRED` | Event date passed without use | No |
+
+### Status Validation
+
+The system determines if a ticket is valid:
+
+```typescript
+// From dal/attendee.ts:330
+const isValid = 
+  !ticket.transferId &&
+  ticket.status !== 'TRANSFERRED' &&
+  ticket.status !== 'CANCELLED' &&
+  ticket.status !== 'REFUNDED';
+```
+
+Only valid tickets can be:
+- Used for event entry
+- Transferred to others
+- Scanned at check-in
+
+## Dashboard Statistics
+
+Your attendee dashboard shows comprehensive stats:
+
+```typescript
+// From dal/attendee.ts:11
+const stats = await getAttendeeDashboardStats(userId);
+```
+
+### Overview Metrics
+
+- **Total tickets**: Sum of all ticket quantities purchased
+- **Total spent**: Total amount paid for all tickets
+- **Ticket purchases**: Number of separate purchases
+- **Free registrations**: Count of free event registrations
+- **Upcoming events**: Events you're attending that haven't ended
+- **Total events attending**: Combined paid and free events
+
+### Ticket Analytics
+
+```typescript
+// From dal/attendee.ts:358
+const analytics = await getAttendeeTicketAnalytics(userId);
+```
+
+Detailed breakdown:
+- **Valid tickets**: Currently usable tickets
+- **Used tickets**: Tickets scanned at events
+- **Transferred tickets**: Tickets you've given to others
+- **Upcoming tickets**: For events that haven't occurred
+- **Past tickets**: For completed events
+
+## Transferring Tickets
+
+Transfer tickets to another EventPalour user when you can't attend.
+
+<Steps>
+  <Step title="Select Ticket to Transfer">
+    From your tickets list, choose a valid ticket:
+    
+    - Ticket must not be already transferred
+    - Ticket must not be used or cancelled
+    - Ticket status must be `SOLD` or `AVAILABLE`
+  </Step>
+  
+  <Step title="Enter Recipient Email">
+    Provide the email address of the person receiving the ticket:
+    
+    ```typescript
+    // From app/actions/tickets.ts:378
+    await transferTicket({
+      purchasedTicketId: ticketId,
+      recipientEmail: "recipient@example.com"
+    });
+    ```
+    
+    **Requirements:**
+    - Recipient must have an EventPalour account
+    - Cannot transfer to yourself
+    - Email must be valid and verified
+  </Step>
+  
+  <Step title="Transfer Validation">
+    The system validates the transfer:
+    
+    - Verifies you own the ticket
+    - Checks ticket hasn't been transferred before
+    - Confirms ticket is valid (not used/cancelled/refunded)
+    - Finds recipient by email address
+  </Step>
+  
+  <Step title="Transfer Execution">
+    If valid, the transfer completes:
+    
+    ```typescript
+    // Creates transfer record
+    await db.insert(ticket_transfers).values({
+      purchased_ticket_id: ticketId,
+      from_user_id: currentUserId,
+      to_user_id: recipientId,
+      transferred_at: new Date()
+    });
+    
+    // Updates ticket ownership
+    await db.update(purchased_tickets)
+      .set({
+        user_id: recipientId,
+        status: 'TRANSFERRED'
+      });
+    ```
+  </Step>
+  
+  <Step title="Confirmation">
+    Both parties receive confirmation:
+    
+    **Recipient receives:**
+    - Transfer notification email
+    - Event details and schedule
+    - New ticket in their dashboard
+    - QR code for check-in
+    - Sender's information
+    
+    **You see:**
+    - Ticket marked as "Transferred"
+    - Recipient information
+    - Transfer timestamp
+    - Ticket removed from active tickets
+  </Step>
+</Steps>
+
+### Transfer Restrictions
+
+<Warning>
+  Once transferred, tickets cannot be retrieved. The transfer is permanent and cannot be undone.
+</Warning>
+
+You cannot transfer tickets that are:
+- Already transferred to someone else
+- Used at the event (scanned)
+- Cancelled by the organizer
+- Refunded to your account
+- Marked as expired
+
+### Transfer Record
+
+Every transfer is tracked:
+
+```typescript
+// From dal/attendee.ts:257
+transfer: {
+  id: transferId,
+  transferredTo: recipientUserId,
+  transferredAt: timestamp,
+  recipientUsername: username,
+  recipientEmail: email
+}
+```
+
+This provides a complete audit trail of ticket ownership.
+
+## Receiving Transferred Tickets
+
+When someone transfers a ticket to you:
+
+<Steps>
+  <Step title="Receive Notification">
+    You'll get an email with:
+    - Sender's name and email
+    - Event details
+    - Ticket information
+    - QR code for entry
+  </Step>
+  
+  <Step title="View in Dashboard">
+    The ticket automatically appears in your tickets dashboard:
+    - Shows original purchase info
+    - Displays sender information
+    - Marked as transferred to you
+    - Fully usable like any purchased ticket
+  </Step>
+  
+  <Step title="Use as Normal">
+    The transferred ticket works exactly like a purchased ticket:
+    - Use QR code for check-in
+    - View event details
+    - Transfer again if needed (if event allows)
+  </Step>
+</Steps>
+
+## Recent Activity
+
+Track your ticket activity:
+
+```typescript
+// From dal/attendee.ts:85
+const activity = await getAttendeeRecentActivity(userId, limit);
+```
+
+Activity feed shows:
+- Recent ticket purchases with details
+- Free event registrations
+- Event information for each activity
+- Quantity and price paid
+- Timestamp of each action
+
+Activities are combined and sorted by date for easy tracking.
+
+## Upcoming Events
+
+View your upcoming events:
+
+```typescript
+// From dal/attendee.ts:146
+const upcoming = await getAttendeeUpcomingEvents(userId, limit);
+```
+
+Shows:
+- Events you have tickets for (purchased or registered)
+- Only events that haven't ended yet
+- Sorted by start date (soonest first)
+- Combines both paid and free events
+- Deduplicated (if you have multiple tickets for same event)
+
+## Ticket QR Codes
+
+Each ticket includes a QR code for event check-in:
+
+### QR Code Features
+
+- **Unique identifier**: Each ticket has a unique ID
+- **Event reference**: Links to specific event
+- **Validation data**: Includes ticket status and ownership
+- **Scannable**: Works with event organizer's scanner app
+
+### Using QR Codes
+
+1. **Display on mobile**: Open ticket in dashboard
+2. **Screenshot**: Save QR code image to photos
+3. **Print**: Print ticket with QR code
+4. **Email**: QR code included in confirmation email
+
+### Check-in Process
+
+At the event:
+1. Present QR code to event staff
+2. Staff scans code with EventPalour scanner
+3. System validates ticket:
+   - Checks ticket status is valid
+   - Verifies event match
+   - Confirms not already used
+4. Ticket marked as `USED` after successful scan
+5. You're granted entry
+
+### Duplicate Scanning Protection
+
+```typescript
+// From lib/db/schema/attendee.ts:104
+unique("unique_ticket_once").on(purchased_ticket_id)
+```
+
+Tickets can only be scanned once:
+- Database constraint prevents duplicate scans
+- After first scan, ticket marked as `USED`
+- Subsequent scan attempts are rejected
+- Prevents ticket sharing fraud
+
+## Managing Free Event Registrations
+
+Free event registrations appear alongside purchased tickets:
+
+### Registration Details
+
+- **Type**: Marked as "Free Registration"
+- **Price**: Shown as "Free" or "0"
+- **QR code**: Provided for check-in
+- **Event info**: Full event details
+- **Check-in tracking**: Records when you arrive
+
+### Registration Status
+
+```typescript
+// From lib/db/schema/event-registrations.ts:10
+event_registrations: {
+  id: string,
+  user_id: string,
+  event_id: string,
+  registered_at: Date,
+  checked_in: Date | null
+}
+```
+
+- **Registered**: Confirmed for event
+- **Checked in**: Present at event (after QR scan)
+- **No-show**: Registered but didn't attend
+
+## Filtering Your Tickets
+
+Organize your tickets by:
+
+### By Status
+- **Active**: Valid, unused tickets
+- **Used**: Tickets already scanned
+- **Transferred**: Tickets you've given away
+- **Expired**: Past event dates
+
+### By Time
+- **Upcoming**: Future events
+- **Past**: Completed events
+- **This week**: Events in next 7 days
+- **This month**: Events in current month
+
+### By Type
+- **Purchased**: Paid tickets only
+- **Free**: Free registrations only
+- **All**: Combined view
+
+## Ticket Refunds
+
+Refund policies are set by event organizers:
+
+### Refund Process
+
+1. **Check refund policy**: View event's refund terms
+2. **Contact organizer**: Request refund through their workspace
+3. **Organizer approval**: Organizer processes refund
+4. **Status update**: Ticket marked as `REFUNDED`
+5. **Payment return**: Funds returned via original payment method
+
+### After Refund
+
+- Ticket status changes to `REFUNDED`
+- Ticket becomes invalid (cannot use for entry)
+- Cannot be transferred
+- Appears in ticket history as refunded
+
+## Calendar Integration
+
+Add events to your calendar:
+
+- **iCal export**: Download .ics file
+- **Google Calendar**: Direct add to Google
+- **Outlook**: Import to Outlook
+- **Apple Calendar**: Add to iOS/macOS Calendar
+
+Calendar entries include:
+- Event title and description
+- Start and end times
+- Location information
+- Organizer details
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Save QR Codes" icon="mobile">
+    Screenshot or save QR codes offline in case of connectivity issues at the venue
+  </Card>
+  
+  <Card title="Verify Details" icon="check">
+    Double-check event date, time, and location before attending
+  </Card>
+  
+  <Card title="Transfer Early" icon="clock">
+    If you can't attend, transfer tickets as early as possible
+  </Card>
+  
+  <Card title="Check Status" icon="circle-check">
+    Verify ticket status before heading to the event
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="My ticket doesn't show a QR code">
+    - Refresh the page
+    - Check if ticket is valid (not transferred/cancelled)
+    - Try viewing on different device
+    - Check confirmation email for QR code
+    - Contact support if issue persists
+  </Accordion>
+  
+  <Accordion title="Transfer failed: Recipient not found">
+    The recipient must:
+    - Have an active EventPalour account
+    - Use the exact email address registered
+    - Have verified their email
+    
+    Ask them to sign up or verify their email first.
+  </Accordion>
+  
+  <Accordion title="Ticket shows as transferred but I didn't transfer it">
+    This could indicate:
+    - Account security issue
+    - Accidental transfer
+    - System error
+    
+    Contact support immediately with your ticket ID.
+  </Accordion>
+  
+  <Accordion title="Can I transfer a ticket back to me?">
+    No, transfers are permanent. The recipient would need to transfer it to you as a new transfer. Each transfer is tracked separately.
+  </Accordion>
+  
+  <Accordion title="Ticket marked as USED but I haven't attended">
+    This means:
+    - Someone scanned your ticket (check if transferred)
+    - Possible duplicate QR code scan
+    - Scanner error
+    
+    Contact event organizer immediately for resolution.
+  </Accordion>
+</AccordionGroup>
+
+## Support
+
+If you need help with your tickets:
+
+1. **Check ticket status**: Verify current state in dashboard
+2. **Review email confirmations**: Check all communications
+3. **Contact event organizer**: For event-specific issues
+4. **Contact EventPalour support**: For platform issues
+
+Provide your ticket ID and purchase reference for faster assistance.

@@ -1,0 +1,638 @@
+---
+title: Local Development Setup
+description: Set up EventPalour on your local machine for development
+---
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed on your machine:
+
+<CardGroup cols={2}>
+  <Card title="Node.js" icon="node-js">
+    Version 20 or higher
+  </Card>
+  <Card title="pnpm" icon="package">
+    Version 9 or higher (recommended package manager)
+  </Card>
+  <Card title="PostgreSQL" icon="database">
+    Version 14 or higher
+  </Card>
+  <Card title="Git" icon="git">
+    For cloning the repository
+  </Card>
+</CardGroup>
+
+<Tip>
+You can use npm or yarn instead of pnpm, but pnpm is recommended for better performance and disk space efficiency.
+</Tip>
+
+## Step 1: Clone the Repository
+
+Clone the EventPalour repository to your local machine:
+
+```bash
+git clone https://github.com/your-org/eventpalour.git
+cd eventpalour
+```
+
+## Step 2: Install Dependencies
+
+Install all required dependencies using pnpm:
+
+```bash
+pnpm install
+```
+
+### Key Dependencies
+
+EventPalour uses the following major packages:
+
+```json
+// From package.json
+{
+  "dependencies": {
+    "next": "16.1.6",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "drizzle-orm": "^0.44.5",
+    "postgres": "^3.4.7",
+    "@paystack/inline-js": "^2.22.7",
+    "arctic": "^3.7.0",
+    "@node-rs/argon2": "^2.0.2",
+    "zod": "^4.1.8",
+    "@tanstack/react-query": "^5.90.2",
+    "tailwindcss": "^4"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "drizzle-kit": "^0.31.4",
+    "@biomejs/biome": "^2.3.6"
+  }
+}
+```
+
+<Info>
+EventPalour uses **Next.js 16** with the App Router, React Server Components, and Turbopack for fast development builds.
+</Info>
+
+## Step 3: Configure Environment Variables
+
+Create a `.env` file in the root directory by copying the example file:
+
+```bash
+cp .env.example .env
+```
+
+### Required Environment Variables
+
+Edit the `.env` file and configure the following variables:
+
+<CodeGroup>
+
+```bash Database Configuration
+# Database
+DATABASE_URL="postgresql://user:password@localhost:5432/eventpalour"
+DIRECT_URL="postgresql://user:password@localhost:5432/eventpalour"
+```
+
+```bash Supabase Storage
+# Supabase (for file storage)
+SUPABASE_SERVICE_ROLE_KEY="your-supabase-service-role-key"
+```
+
+```bash Paystack Payments
+# Paystack (for payment processing)
+PAYSTACK_PUBLIC_KEY="pk_test_your_paystack_public_key"
+PAYSTACK_SECRET_KEY="sk_test_your_paystack_secret_key"
+```
+
+```bash OAuth Providers (Optional)
+# OAuth Configuration
+GOOGLE_CLIENT_ID="your-google-client-id"
+GOOGLE_CLIENT_SECRET="your-google-client-secret"
+GITHUB_CLIENT_ID="your-github-client-id"
+GITHUB_CLIENT_SECRET="your-github-client-secret"
+GOOGLE_CALLBACK_URL="http://localhost:3000/api/auth/oauth/google/callback"
+```
+
+```bash Email Configuration
+# Email Service (using Resend)
+RESEND_API_KEY="re_your_resend_api_key"
+EMAIL_FROM="noreply@eventpalour.com"
+EMAIL_FROM_SUPPORT="support@eventpalour.com"
+EMAIL_FROM_TICKETS="tickets@eventpalour.com"
+EMAIL_FROM_BILLING="billing@eventpalour.com"
+EMAIL_FROM_NOTIFICATIONS="notifications@eventpalour.com"
+```
+
+```bash Upstash Redis & QStash (Optional)
+# Upstash for rate limiting and background jobs
+UPSTASH_URL="your-upstash-redis-url"
+UPSTASH_TOKEN="your-upstash-token"
+QSTASH_URL="your-qstash-url"
+QSTASH_TOKEN="your-qstash-token"
+QSTASH_CURRENT_SIGNING_KEY="your-signing-key"
+QSTASH_NEXT_SIGNING_KEY="your-next-signing-key"
+```
+
+</CodeGroup>
+
+<Warning>
+**Security Best Practices**
+
+- Never commit your `.env` file to version control
+- Use different keys for development and production
+- Rotate secrets regularly
+- Use strong, randomly generated values for sensitive keys
+</Warning>
+
+### Environment Variables Reference
+
+From the `.env.example` file:
+
+```bash
+# Database
+DATABASE_URL=
+DIRECT_URL=
+
+# Supabase
+SUPABASE_SERVICE_ROLE_KEY=
+
+# Paystack
+PAYSTACK_PUBLIC_KEY=
+PAYSTACK_SECRET_KEY=
+
+# Upstash & QStash
+UPSTASH_URL=
+UPSTASH_TOKEN=
+QSTASH_URL=
+QSTASH_TOKEN=
+QSTASH_CURRENT_SIGNING_KEY=
+QSTASH_NEXT_SIGNING_KEY=
+
+# OAuth (Optional)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+GOOGLE_CALLBACK_URL=
+
+# Email Configuration
+RESEND_API_KEY=
+EMAIL_FROM=
+EMAIL_SERVER_HOST=
+EMAIL_SERVER_PORT=
+EMAIL_SERVER_USER=
+EMAIL_SERVER_PASSWORD=
+EMAIL_FROM_SUPPORT=
+EMAIL_FROM_TICKETS=
+EMAIL_FROM_BILLING=
+EMAIL_FROM_NOTIFICATIONS=
+EMAIL_FROM_SUPPORT_NAME=
+EMAIL_FROM_TICKETS_NAME=
+EMAIL_FROM_BILLING_NAME=
+EMAIL_FROM_NOTIFICATIONS_NAME=
+```
+
+## Step 4: Set Up the Database
+
+EventPalour uses PostgreSQL with Drizzle ORM for database management.
+
+### Database Configuration
+
+The Drizzle configuration is defined in `drizzle.config.ts`:
+
+```typescript
+import "dotenv/config";
+import type { Config } from "drizzle-kit";
+import { env } from "@/env/server";
+
+export default {
+  out: "./drizzle",
+  schema: "./lib/db/schema/index.ts",
+  breakpoints: true,
+  verbose: true,
+  strict: true,
+  dialect: "postgresql",
+  casing: "snake_case",
+  dbCredentials: {
+    url: env.DATABASE_URL,
+  },
+} satisfies Config;
+```
+
+<Steps>
+  <Step title="Create PostgreSQL Database">
+    Create a new PostgreSQL database for the application:
+    
+    ```bash
+    createdb eventpalour
+    ```
+    
+    Or using psql:
+    
+    ```sql
+    CREATE DATABASE eventpalour;
+    ```
+  </Step>
+  
+  <Step title="Generate Database Schema">
+    Generate the database migrations from the schema:
+    
+    ```bash
+    pnpm db:generate
+    ```
+    
+    This reads the schema from `./lib/db/schema/` and creates migration files in the `./drizzle` directory.
+  </Step>
+  
+  <Step title="Run Migrations">
+    Apply the migrations to your database:
+    
+    ```bash
+    pnpm db:migrate
+    ```
+  </Step>
+  
+  <Step title="Verify Setup (Optional)">
+    Open Drizzle Studio to view your database:
+    
+    ```bash
+    pnpm db:studio
+    ```
+    
+    This will open a web interface at `https://local.drizzle.studio`
+  </Step>
+</Steps>
+
+### Database Schema Overview
+
+EventPalour's database schema includes the following main tables:
+
+<CodeGroup>
+
+```typescript Users & Authentication
+// lib/db/schema/user.ts
+export const user = pgTable("user", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  username: varchar("username", { length: 255 }).notNull(),
+  avatar: text("avatar").notNull(),
+  password: text("password"),
+  email_verified: boolean("email_verified").notNull().default(false),
+  registered_2fa: boolean("registered_2fa").notNull().default(false),
+  platform_role: platform_role_enum("platform_role"),
+});
+
+export const session = pgTable("session", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  user_id: varchar("user_id", { length: 16 }).notNull(),
+  two_factor_verified: boolean("two_factor_verified").notNull().default(false),
+  ip_address: varchar("ip_address", { length: 100 }),
+  expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+```
+
+```typescript Workspaces
+// lib/db/schema/workspace.ts
+export const workspace = pgTable("workspace", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  website: varchar("website", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  image_url: text("image_url").notNull(),
+  invite_code: text("invite_code").notNull().unique(),
+  user_id: varchar("user_id", { length: 16 }).notNull(),
+});
+
+export const workspace_members = pgTable("workspace_members", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  user_id: varchar("user_id", { length: 16 }).notNull(),
+  workspace_id: varchar("workspace_id", { length: 16 }).notNull(),
+  role: workspace_role_enum("role").notNull().default(WorkspaceRole.MEMBER),
+});
+```
+
+```typescript Events
+// lib/db/schema/events.ts
+export const events = pgTable("events", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  short_id: varchar("short_id", { length: 6 }).notNull().unique(),
+  title: varchar("title", { length: 255 }).notNull(),
+  status: event_status_enum("status").notNull().default(EventStatus.ACTIVE),
+  description: text("description").notNull(),
+  workspace_id: varchar("workspace_id", { length: 16 }).notNull(),
+  category_id: varchar("category_id", { length: 16 }).notNull(),
+  type: event_type_enum("type").notNull().default(EventType.PHYSICAL),
+  pricing: event_pricing_enum("pricing").notNull().default(EventPricing.FREE),
+  venue: text("venue"),
+  country: text("country"),
+  city: text("city"),
+  online_link: text("online_link"),
+  start_date: timestamp("start_date", { withTimezone: true }).notNull(),
+  end_date: timestamp("end_date", { withTimezone: true }).notNull(),
+});
+```
+
+```typescript Tickets
+// lib/db/schema/tickets.ts
+export const tickets = pgTable("tickets", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  event_id: varchar("event_id", { length: 16 }).notNull(),
+  ticket_type_id: varchar("ticket_type_id", { length: 16 }).notNull(),
+  price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+  availability_quantity: integer("availability"),
+  currency: currency_enum("currency").notNull().default(CurrencyEnum.KES),
+  valid_from: timestamp("valid_from", { withTimezone: true }),
+  valid_until: timestamp("valid_until", { withTimezone: true }),
+});
+```
+
+</CodeGroup>
+
+### Available Database Commands
+
+```json
+// From package.json
+{
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:clear": "tsx ./lib/db/clear.ts",
+    "db:view": "concurrently \"pnpm drizzle-kit studio\" \"pnpm dlx drizzle-lab visualizer\" \"sleep 1 && pnpm dlx drizzle-view\""
+  }
+}
+```
+
+<Info>
+**Database Naming Convention**
+
+EventPalour uses `snake_case` for all database columns and tables as configured in `drizzle.config.ts`.
+</Info>
+
+## Step 5: Start the Development Server
+
+Run the development server with Turbopack:
+
+```bash
+pnpm dev
+```
+
+The application will be available at `http://localhost:3000`.
+
+### Development Scripts
+
+```json
+// From package.json
+{
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "lint": "biome check",
+    "fix": "biome check --write",
+    "format": "biome format --write"
+  }
+}
+```
+
+<Steps>
+  <Step title="Development Mode">
+    ```bash
+    pnpm dev
+    ```
+    Starts the Next.js development server with Turbopack and hot reloading
+  </Step>
+  
+  <Step title="Build for Production">
+    ```bash
+    pnpm build
+    ```
+    Creates an optimized production build
+  </Step>
+  
+  <Step title="Start Production Server">
+    ```bash
+    pnpm start
+    ```
+    Runs the production server (after building)
+  </Step>
+</Steps>
+
+## Step 6: Code Quality Tools
+
+EventPalour uses Biome for linting and formatting:
+
+### Linting
+
+```bash
+# Check for linting errors
+pnpm lint
+
+# Auto-fix linting errors
+pnpm fix
+```
+
+### Formatting
+
+```bash
+# Format code
+pnpm format
+```
+
+### Git Hooks
+
+EventPalour uses Husky for pre-commit hooks:
+
+```json
+// From package.json
+{
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,json,jsonc,css,scss,md,mdx}": [
+      "pnpm dlx ultracite fix"
+    ]
+  }
+}
+```
+
+<Tip>
+Code is automatically formatted on commit using lint-staged and Husky.
+</Tip>
+
+## Next.js Configuration
+
+EventPalour uses advanced Next.js 16 features:
+
+```typescript
+// next.config.ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  typedRoutes: true,
+  cacheComponents: true, // Enables PPR with Cache Components
+  reactCompiler: true,
+  compiler: {
+    removeConsole: process.env.NODE_ENV === "production",
+  },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "fgaiynraasujxieineag.supabase.co",
+        port: "",
+        pathname: "/storage/v1/object/public/**",
+      },
+      {
+        protocol: "https",
+        hostname: "lh3.googleusercontent.com",
+      },
+      {
+        protocol: "https",
+        hostname: "avatars.githubusercontent.com",
+      },
+    ],
+  },
+  serverExternalPackages: ["@node-rs/argon2"],
+};
+
+export default nextConfig;
+```
+
+<Note>
+The React Compiler is enabled for automatic optimization. Cache Components enables Partial Prerendering (PPR).
+</Note>
+
+## Project Structure
+
+```
+eventpalour/
+├── app/                      # Next.js App Router
+│   ├── (auth)/              # Authentication routes
+│   │   └── auth/
+│   │       ├── sign-in/
+│   │       ├── sign-up/
+│   │       ├── verify-email/
+│   │       └── onboarding/
+│   ├── api/                 # API routes
+│   ├── dashboard/           # User dashboard
+│   ├── workspace/           # Workspace pages
+│   │   └── [workspaceId]/
+│   │       ├── events/
+│   │       └── create/
+│   └── actions/             # Server actions
+├── components/              # React components
+│   ├── ui/                  # UI components
+│   └── common/              # Shared components
+├── lib/                     # Libraries and utilities
+│   ├── db/                  # Database
+│   │   └── schema/          # Drizzle schemas
+│   ├── auth/                # Authentication utilities
+│   ├── server/              # Server utilities
+│   └── utils/               # Helper functions
+├── drizzle/                 # Database migrations
+├── public/                  # Static assets
+└── package.json             # Dependencies
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Database connection errors">
+    - Verify PostgreSQL is running: `pg_isready`
+    - Check your `DATABASE_URL` in `.env`
+    - Ensure the database exists: `psql -l`
+    - Try connecting manually: `psql -d eventpalour`
+  </Accordion>
+  
+  <Accordion title="Module not found errors">
+    - Delete `node_modules` and reinstall: `rm -rf node_modules && pnpm install`
+    - Clear Next.js cache: `rm -rf .next`
+    - Ensure all dependencies are installed
+  </Accordion>
+  
+  <Accordion title="Environment variable issues">
+    - Restart the development server after changing `.env`
+    - Verify all required variables are set
+    - Check for typos in variable names
+    - Ensure no trailing spaces in values
+  </Accordion>
+  
+  <Accordion title="Drizzle migration errors">
+    - Check database credentials
+    - Ensure PostgreSQL version compatibility (14+)
+    - Clear the `drizzle` folder and regenerate: `rm -rf drizzle && pnpm db:generate`
+    - Check for schema syntax errors
+  </Accordion>
+  
+  <Accordion title="OAuth setup issues">
+    - Verify callback URLs match your OAuth provider settings
+    - Ensure client ID and secret are correct
+    - Check redirect URIs in provider console
+    - For local development, use `http://localhost:3000` not `https`
+  </Accordion>
+</AccordionGroup>
+
+## Development Tips
+
+<CardGroup cols={2}>
+  <Card title="Hot Reloading" icon="bolt">
+    Turbopack provides instant hot reloading. Changes appear immediately without full page refresh.
+  </Card>
+  <Card title="Type Safety" icon="shield">
+    TypeScript and Drizzle ORM ensure type safety across the stack.
+  </Card>
+  <Card title="Server Actions" icon="server">
+    Use Next.js Server Actions for data mutations. See files in `app/actions/`.
+  </Card>
+  <Card title="Database Studio" icon="table">
+    Use `pnpm db:studio` to visually explore and edit your database.
+  </Card>
+</CardGroup>
+
+## Production Deployment
+
+For production deployment:
+
+<Steps>
+  <Step title="Set Production Environment Variables">
+    Configure all environment variables with production values
+  </Step>
+  <Step title="Run Database Migrations">
+    ```bash
+    pnpm db:migrate
+    ```
+  </Step>
+  <Step title="Build the Application">
+    ```bash
+    pnpm build
+    ```
+  </Step>
+  <Step title="Start Production Server">
+    ```bash
+    pnpm start
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+Always use strong, unique secrets in production. Never use development credentials in production environments.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create Your First Event" icon="calendar" href="/quickstart">
+    Follow the quickstart guide to create your first event
+  </Card>
+  <Card title="Explore the API" icon="code" href="/api-reference">
+    Learn about available API endpoints and server actions
+  </Card>
+  <Card title="Authentication" icon="lock" href="/authentication">
+    Understand the authentication system
+  </Card>
+  <Card title="Database Schema" icon="database" href="/database-schema">
+    Explore the complete database schema
+  </Card>
+</CardGroup>

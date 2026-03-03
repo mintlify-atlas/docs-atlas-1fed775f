@@ -1,0 +1,326 @@
+---
+title: Authentication
+description: Learn how authentication and authorization work in EventPalour
+---
+
+## Overview
+
+EventPalour uses session-based authentication with support for:
+
+- Email and password authentication
+- OAuth providers (Google, GitHub)
+- Two-factor authentication (2FA)
+- WebAuthn/Passkeys
+- Role-based access control
+
+## Session Management
+
+Authentication is handled through secure sessions that are validated on every request.
+
+### Getting Current User
+
+Retrieve the currently authenticated user:
+
+```typescript
+import { getCurrentUser } from '@/app/actions/auth';
+
+const result = await getCurrentUser();
+
+if (result) {
+  const { user, session } = result;
+  console.log('User ID:', user.id);
+  console.log('Email:', user.email);
+  console.log('Platform Role:', user.platform_role);
+}
+```
+
+### Requiring Authentication
+
+Redirect unauthenticated users to the sign-in page:
+
+```typescript
+import { requireAuth } from '@/app/actions/auth';
+
+const { user, session } = await requireAuth();
+// If not authenticated, automatically redirects to /auth/sign-in
+```
+
+## Platform Roles
+
+EventPalour has two primary platform roles:
+
+<Tabs>
+  <Tab title="Organizer">
+    Users who create and manage events:
+    
+    - Create workspaces
+    - Manage events and tickets
+    - Access analytics
+    - Require KYC verification for paid events
+  </Tab>
+  
+  <Tab title="Attendee">
+    Users who browse and attend events:
+    
+    - Browse public events
+    - Purchase tickets
+    - Manage their tickets
+    - Receive event updates
+  </Tab>
+</Tabs>
+
+### Requiring Platform Role
+
+```typescript
+import { requireRole } from '@/app/actions/auth';
+import { PlatformRole } from '@/lib/db/schema/enums';
+
+// Require organizer role
+const { user } = await requireRole(PlatformRole.ORGANIZER);
+// Redirects to /no-workspace if user is not an organizer
+```
+
+## Workspace Authorization
+
+Workspaces have their own role hierarchy:
+
+| Role | Permissions |
+|------|-------------|
+| **Admin** | Full workspace control, manage members, billing |
+| **Moderator** | Create events, manage tickets, view analytics |
+| **Member** | View events, basic access |
+
+### Validating Workspace Access
+
+```typescript
+import { validateWorkspaceAccess } from '@/app/actions/auth';
+import { WorkspaceRole } from '@/lib/db/schema/enums';
+
+// Require at least Moderator role
+const { user, workspace, role } = await validateWorkspaceAccess(
+  workspaceId,
+  WorkspaceRole.MODERATOR
+);
+
+console.log('User role:', role); // 'admin' or 'moderator'
+console.log('Workspace:', workspace.name);
+```
+
+<Note>
+Workspace owners always have admin-level access and cannot be removed from their workspace.
+</Note>
+
+## Admin Levels
+
+Platform administrators have hierarchical access levels:
+
+```typescript
+enum AdminLevel {
+  SUPER_ADMIN = "super_admin",  // Platform owners
+  SUPPORT = "support",            // Customer support
+  FINANCE = "finance",            // Finance team
+  MODERATOR = "moderator"         // Content moderation
+}
+```
+
+### Super Admin Verification
+
+Check if a user is a super admin:
+
+```bash
+curl -X GET https://api.eventpalour.com/api/auth/check-super-admin \
+  -H "Cookie: session=your_session_token"
+```
+
+**Response:**
+
+```json
+{
+  "isSuperAdmin": true
+}
+```
+
+<Warning>
+Super admin access is determined by email whitelist in the environment configuration.
+</Warning>
+
+## OAuth Authentication
+
+EventPalour supports OAuth authentication with Google and GitHub.
+
+### Google OAuth Flow
+
+<Steps>
+  <Step title="Initiate OAuth">
+    Redirect user to Google OAuth endpoint:
+    
+    ```bash
+    GET /api/auth/oauth/google
+    ```
+  </Step>
+  
+  <Step title="User Authorizes">
+    User grants permissions on Google's consent screen.
+  </Step>
+  
+  <Step title="Callback Handling">
+    Google redirects to callback endpoint:
+    
+    ```bash
+    GET /api/auth/oauth/google/callback?code=...
+    ```
+    
+    EventPalour exchanges the code for user information and creates/updates the user account.
+  </Step>
+  
+  <Step title="Session Created">
+    User is authenticated and redirected to the dashboard.
+  </Step>
+</Steps>
+
+## API Authentication
+
+API endpoints require authentication via session cookies.
+
+### Authenticated Request Example
+
+```bash
+curl -X POST https://api.eventpalour.com/api/upload \
+  -H "Cookie: session=your_session_token" \
+  -F "file=@image.jpg" \
+  -F "bucket=EVENTS"
+```
+
+### Authentication Errors
+
+**401 Unauthorized** - Missing or invalid session:
+
+```json
+{
+  "error": "Authentication required"
+}
+```
+
+**403 Forbidden** - Insufficient permissions:
+
+```json
+{
+  "error": "Only workspace admins can send invitations"
+}
+```
+
+## User Object
+
+The authenticated user object includes:
+
+```typescript
+interface User {
+  id: string;                    // Unique user ID
+  email: string;                 // Email address
+  name: string;                  // Display name
+  platform_role: PlatformRole;   // 'organizer' or 'attendee'
+  email_verified: boolean;       // Email verification status
+  two_factor_enabled: boolean;   // 2FA status
+  created_at: Date;              // Account creation date
+}
+```
+
+## Getting User Workspaces
+
+Retrieve all workspaces a user has access to:
+
+```typescript
+import { getUserWorkspaces } from '@/app/actions/auth';
+
+const workspaces = await getUserWorkspaces(userId);
+
+workspaces.forEach(({ workspace, role, isOwner }) => {
+  console.log(`${workspace.name}: ${role} ${isOwner ? '(Owner)' : ''}`);
+});
+```
+
+**Response structure:**
+
+```typescript
+[
+  {
+    workspace: {
+      id: string;
+      name: string;
+      description: string;
+      // ... other workspace fields
+    },
+    role: WorkspaceRole;  // 'admin' | 'moderator' | 'member'
+    isOwner: boolean;     // true if user created the workspace
+  }
+]
+```
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Validate Permissions">
+    Never trust client-side role checks. Always validate permissions server-side:
+    
+    ```typescript
+    // ✅ Good: Server-side validation
+    const { user, workspace, role } = await validateWorkspaceAccess(
+      workspaceId,
+      WorkspaceRole.MODERATOR
+    );
+    
+    // ❌ Bad: Client-side only
+    if (userRole === 'admin') {
+      // Don't rely on client state
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use requireAuth() for Protected Routes">
+    Protect server actions and API routes:
+    
+    ```typescript
+    export async function deleteEvent(eventId: string) {
+      // Require authentication first
+      await requireAuth();
+      
+      // Then validate specific permissions
+      const event = await getEventById(eventId);
+      await validateWorkspaceAccess(event.workspace_id, WorkspaceRole.MODERATOR);
+      
+      // Proceed with deletion
+      await db.delete(tables.events).where(eq(tables.events.id, eventId));
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle Session Expiration">
+    Sessions can expire. Always handle null user gracefully:
+    
+    ```typescript
+    const result = await getCurrentUser();
+    
+    if (!result) {
+      // Redirect to login or show error
+      redirect('/auth/sign-in');
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Events API" icon="calendar" href="/api/events">
+    Create and manage events with proper authorization
+  </Card>
+  <Card title="Workspaces API" icon="users" href="/api/workspaces">
+    Learn about workspace management
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/api/errors">
+    Handle authentication and authorization errors
+  </Card>
+  <Card title="User Roles" icon="shield" href="/concepts/roles-permissions">
+    Learn more about the role system
+  </Card>
+</CardGroup>

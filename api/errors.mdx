@@ -1,0 +1,473 @@
+---
+title: Error handling
+description: Understanding error codes and responses in EventPalour's API
+---
+
+## Error Response Format
+
+All API errors follow a consistent format:
+
+```json
+{
+  "error": "Error message describing what went wrong"
+}
+```
+
+For validation errors with Zod schema validation:
+
+```json
+{
+  "error": "Invalid request data",
+  "details": [
+    {
+      "path": ["title"],
+      "message": "Title is required"
+    },
+    {
+      "path": ["endDate"],
+      "message": "End date must be after start date"
+    }
+  ]
+}
+```
+
+## HTTP Status Codes
+
+EventPalour uses standard HTTP status codes:
+
+| Code | Status | Description |
+|------|--------|-------------|
+| `200` | OK | Request successful |
+| `400` | Bad Request | Invalid request data or validation error |
+| `401` | Unauthorized | Authentication required or failed |
+| `403` | Forbidden | Insufficient permissions |
+| `404` | Not Found | Resource not found |
+| `429` | Too Many Requests | Rate limit exceeded |
+| `500` | Internal Server Error | Server-side error |
+
+## Common Error Codes
+
+### Authentication Errors
+
+#### 401 Unauthorized
+
+Returned when authentication is required but not provided:
+
+```json
+{
+  "error": "Authentication required"
+}
+```
+
+**Common causes:**
+- No session cookie provided
+- Session expired
+- Invalid session token
+
+**Solution:** Redirect user to `/auth/sign-in` or refresh session.
+
+#### 401 Authentication Failed
+
+Returned when authentication check fails:
+
+```json
+{
+  "error": "Authentication failed"
+}
+```
+
+**Common causes:**
+- Corrupted session data
+- Session invalidated
+- Server-side session store error
+
+### Authorization Errors
+
+#### 403 Forbidden - Workspace Access
+
+```json
+{
+  "error": "Only workspace admins can send invitations"
+}
+```
+
+**Common causes:**
+- User has insufficient role (e.g., Member trying to perform Admin action)
+- User not a member of the workspace
+- Workspace ownership required
+
+**Solution:** Check user role with `validateWorkspaceAccess()`.
+
+#### 403 Forbidden - Platform Role
+
+```json
+{
+  "error": "Organizer role required"
+}
+```
+
+**Common causes:**
+- Attendee trying to access organizer features
+- User hasn't selected platform role
+
+**Solution:** Prompt user to select role or create workspace.
+
+### Validation Errors
+
+#### 400 Bad Request - Missing Fields
+
+```json
+{
+  "error": "Invalid request data",
+  "details": [
+    {
+      "code": "too_small",
+      "minimum": 1,
+      "path": ["title"],
+      "message": "Title is required"
+    }
+  ]
+}
+```
+
+#### 400 Bad Request - Invalid File
+
+```json
+{
+  "error": "File size must be less than 10MB"
+}
+```
+
+**File upload validation errors:**
+- `"No file provided"` - Missing file in request
+- `"File size must be less than 10MB"` - File too large (10MB limit)
+- `"Invalid file type. Only images (JPEG, PNG, WebP) and PDFs are allowed."` - Wrong file type
+- `"File content does not match the file type."` - File type spoofing detected
+- `"Invalid bucket. Must be one of: EVENTS, USERS, DOCUMENTS"` - Invalid storage bucket
+
+### Resource Errors
+
+#### 404 Not Found - Event
+
+```json
+{
+  "error": "Event not found"
+}
+```
+
+**Common causes:**
+- Invalid event ID
+- Event deleted
+- No access to private event
+
+#### 404 Not Found - Workspace
+
+```json
+{
+  "error": "Workspace not found"
+}
+```
+
+**Common causes:**
+- Invalid workspace ID
+- Workspace deleted
+- User not a member
+
+### Business Logic Errors
+
+#### Ticket Availability
+
+```json
+{
+  "error": "Not enough tickets available"
+}
+```
+
+**Common causes:**
+- Requested quantity exceeds available tickets
+- Tickets sold out between viewing and purchase
+- Concurrent purchases
+
+#### KYC Requirements
+
+```json
+{
+  "error": "KYC verification required for paid events"
+}
+```
+
+**Common causes:**
+- Organizer hasn't completed KYC
+- KYC pending or rejected
+- Trying to create paid event without KYC approval
+
+**Solution:** Complete KYC verification process.
+
+#### Date Validation
+
+```json
+{
+  "error": "End date must be after start date"
+}
+```
+
+**Common causes:**
+- Invalid date range
+- Event end before start
+- Dates in the past
+
+### Rate Limiting
+
+#### 429 Too Many Requests
+
+```json
+{
+  "error": "Too many requests. Please try again later."
+}
+```
+
+**Headers:**
+```
+Retry-After: 60
+Content-Type: application/json
+```
+
+**Common causes:**
+- Exceeded rate limit for POST requests
+- Too many upload attempts
+- Rapid repeated requests
+
+**Solution:** Wait for the duration specified in `Retry-After` header (seconds).
+
+### Server Errors
+
+#### 500 Internal Server Error
+
+Production response (sanitized):
+
+```json
+{
+  "error": "An error occurred while uploading the file. Please try again."
+}
+```
+
+Development response (detailed):
+
+```json
+{
+  "error": "Database connection failed: Connection timeout"
+}
+```
+
+<Warning>
+Detailed error messages are only shown in development mode. Production errors are sanitized to prevent information leakage.
+</Warning>
+
+## Error Handling Best Practices
+
+### Client-Side Error Handling
+
+```typescript
+import { createEvent } from '@/app/actions/events';
+
+try {
+  const result = await createEvent(eventData);
+  
+  if (!result.success) {
+    // Handle business logic errors
+    console.error('Event creation failed:', result.error);
+    
+    if (result.error?.includes('KYC')) {
+      // Redirect to KYC page
+      router.push('/dashboard/kyc');
+    } else if (result.error?.includes('validation')) {
+      // Show validation errors to user
+      showValidationErrors(result.details);
+    }
+  }
+} catch (error) {
+  // Handle unexpected errors
+  console.error('Unexpected error:', error);
+  showErrorToast('Something went wrong. Please try again.');
+}
+```
+
+### Server-Side Error Handling
+
+```typescript
+export async function createEvent(data: CreateEventInput) {
+  try {
+    // Validate authentication
+    const { user } = await requireAuth();
+    
+    // Validate permissions
+    await validateWorkspaceAccess(data.workspaceId, WorkspaceRole.MODERATOR);
+    
+    // Validate input
+    const validated = createEventSchema.parse(data);
+    
+    // Check KYC for paid events
+    if (validated.pricing === EventPricing.PAID) {
+      const kycValid = await validateKycForPaidEvent(data.workspaceId);
+      if (!kycValid) {
+        return { 
+          success: false, 
+          error: 'KYC verification required for paid events' 
+        };
+      }
+    }
+    
+    // Create event
+    const event = await db.insert(tables.events).values(validated);
+    
+    return { success: true, event };
+    
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return {
+        success: false,
+        error: 'Invalid request data',
+        details: error.issues
+      };
+    }
+    
+    // Log error but don't expose details
+    console.error('Event creation error:', error);
+    return {
+      success: false,
+      error: 'Failed to create event. Please try again.'
+    };
+  }
+}
+```
+
+### Graceful Degradation
+
+<AccordionGroup>
+  <Accordion title="Handle Session Expiration">
+    ```typescript
+    const result = await getCurrentUser();
+    
+    if (!result) {
+      // Session expired - redirect to login
+      redirect('/auth/sign-in?redirect=' + encodeURIComponent(currentPath));
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Retry Failed Uploads">
+    ```typescript
+    async function uploadWithRetry(file: File, maxRetries = 3) {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const result = await uploadFile(file);
+          if (result.success) return result;
+        } catch (error) {
+          if (attempt === maxRetries) throw error;
+          
+          // Exponential backoff
+          await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+        }
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Validate Before Submission">
+    ```typescript
+    // Client-side validation before API call
+    const errors = validateEventForm(formData);
+    
+    if (errors.length > 0) {
+      // Show errors without making API call
+      setFormErrors(errors);
+      return;
+    }
+    
+    // Proceed with API call
+    const result = await createEvent(formData);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Debugging Errors
+
+### Enable Development Mode
+
+Set environment variable for detailed errors:
+
+```bash
+NODE_ENV=development
+```
+
+### Check Server Logs
+
+Server-side errors are logged to console:
+
+```bash
+# View logs in development
+npm run dev
+
+# Production logs (if using PM2, Docker, etc.)
+pm2 logs eventpalour
+docker logs eventpalour
+```
+
+### Common Debugging Steps
+
+<Steps>
+  <Step title="Verify Authentication">
+    Check that session cookie is being sent:
+    
+    ```typescript
+    const result = await getCurrentUser();
+    console.log('Current user:', result?.user.email);
+    ```
+  </Step>
+  
+  <Step title="Validate Input Data">
+    Log the data being sent:
+    
+    ```typescript
+    console.log('Sending data:', JSON.stringify(data, null, 2));
+    const result = await createEvent(data);
+    ```
+  </Step>
+  
+  <Step title="Check Permissions">
+    Verify user has required role:
+    
+    ```typescript
+    const { role } = await validateWorkspaceAccess(workspaceId);
+    console.log('User role:', role);
+    ```
+  </Step>
+  
+  <Step title="Inspect Error Details">
+    Log full error object:
+    
+    ```typescript
+    if (!result.success) {
+      console.error('Error:', result.error);
+      console.error('Details:', result.details);
+    }
+    ```
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/api/authentication">
+    Learn about authentication and session management
+  </Card>
+  <Card title="Events API" icon="calendar" href="/api/events">
+    Create and manage events
+  </Card>
+  <Card title="Tickets API" icon="ticket" href="/api/tickets">
+    Handle ticket operations
+  </Card>
+  <Card title="Payments API" icon="credit-card" href="/api/payments">
+    Process payments and refunds
+  </Card>
+</CardGroup>

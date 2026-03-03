@@ -1,0 +1,794 @@
+---
+title: Workspaces API
+description: Manage workspaces, team members, and organization settings
+---
+
+## Overview
+
+The Workspaces API allows organizers to create and manage their organization workspaces, invite team members, configure settings, and control access permissions.
+
+## Create Workspace
+
+Create a new workspace during organizer onboarding.
+
+```typescript
+import { createWorkspace } from '@/app/actions/workspace';
+
+const formData = new FormData();
+formData.append('name', 'Tech Events Inc');
+formData.append('description', 'We organize technology conferences');
+formData.append('website', 'https://techevents.com');
+formData.append('phone', '+254712345678');
+
+const result = await createWorkspace(null, formData);
+```
+
+### Parameters
+
+<ParamField path="name" type="string" required>
+  Workspace name (1-255 characters)
+</ParamField>
+
+<ParamField path="description" type="string">
+  Description of your organization
+</ParamField>
+
+<ParamField path="website" type="string">
+  Organization website URL (must be valid URL)
+</ParamField>
+
+<ParamField path="phone" type="string">
+  Contact phone number (max 50 characters)
+</ParamField>
+
+<ParamField path="social_x" type="string">
+  X (Twitter) profile URL
+</ParamField>
+
+<ParamField path="social_facebook" type="string">
+  Facebook profile URL
+</ParamField>
+
+<ParamField path="social_linkedin" type="string">
+  LinkedIn profile URL
+</ParamField>
+
+<ParamField path="social_instagram" type="string">
+  Instagram profile URL
+</ParamField>
+
+<ParamField path="social_github" type="string">
+  GitHub profile URL
+</ParamField>
+
+<ParamField path="logo" type="File">
+  Workspace logo image file
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  Whether workspace was created successfully
+</ResponseField>
+
+<ResponseField name="workspaceId" type="string">
+  ID of the created workspace
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if creation failed
+</ResponseField>
+
+### Workspace Creation Process
+
+<Steps>
+  <Step title="Permission Check">
+    Only users with `platform_role: "organizer"` can create workspaces.
+  </Step>
+  
+  <Step title="Validation">
+    System validates:
+    - Name is required and within length limits
+    - URLs are valid (if provided)
+    - User doesn't already have a workspace
+  </Step>
+  
+  <Step title="Invite Code Generation">
+    A unique invite code is generated for the workspace:
+    
+    ```typescript
+    const inviteCode = generateNanoId() + generateNanoId();
+    ```
+  </Step>
+  
+  <Step title="Creator Added as Admin">
+    The workspace creator is automatically added as an admin member:
+    
+    ```typescript
+    await db.insert(tables.workspace_members).values({
+      user_id: user.id,
+      workspace_id: workspace.id,
+      role: WorkspaceRole.ADMIN
+    });
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+**One Workspace Per Organizer:** Each organizer account can only create one workspace. To manage multiple organizations, invite team members with appropriate roles.
+</Warning>
+
+## Get Workspace Details
+
+Retrieve workspace information with access check.
+
+```typescript
+import { getWorkspace } from '@/app/actions/workspace';
+
+const workspace = await getWorkspace('wks_abc123');
+```
+
+### Server Action (DAL)
+
+Alternatively, use the cached DAL function:
+
+```typescript
+import { getWorkspaceWithAccess } from '@/dal/workspace';
+
+const { workspace, role, isOwner } = await getWorkspaceWithAccess('wks_abc123');
+```
+
+### Response
+
+<ResponseField name="workspace" type="object">
+  Workspace details including:
+  - `id` - Workspace identifier
+  - `name` - Workspace name
+  - `description` - Organization description
+  - `image_url` - Logo URL
+  - `invite_code` - Invite code for new members
+  - `website` - Organization website
+  - Social media links
+  - `user_id` - Workspace owner ID
+  - `created_at` - Creation timestamp
+</ResponseField>
+
+<ResponseField name="role" type="WorkspaceRole">
+  User's role in the workspace: `admin`, `moderator`, or `member`
+</ResponseField>
+
+<ResponseField name="isOwner" type="boolean">
+  True if user is the workspace owner
+</ResponseField>
+
+## Invite Members
+
+Invite team members to join your workspace.
+
+```typescript
+import { inviteWorkspaceMembers } from '@/app/actions/workspace';
+import { WorkspaceRole } from '@/lib/db/schema/enums';
+
+const result = await inviteWorkspaceMembers(
+  'wks_abc123',
+  ['john@example.com', 'jane@example.com'],
+  WorkspaceRole.MODERATOR
+);
+```
+
+### API Route
+
+You can also use the API endpoint:
+
+```typescript
+POST /api/workspace/invite
+```
+
+**Request Body:**
+
+```json
+{
+  "emails": ["user1@example.com", "user2@example.com"],
+  "workspaceId": "wks_abc123",
+  "workspaceName": "Tech Events Inc",
+  "invitedByName": "John Doe",
+  "invitedByEmail": "john@eventpalour.com",
+  "role": "moderator",
+  "inviteCode": "unique_invite_code"
+}
+```
+
+### Parameters
+
+<ParamField path="workspaceId" type="string" required>
+  ID of the workspace
+</ParamField>
+
+<ParamField path="emails" type="string[]" required>
+  Array of email addresses to invite
+</ParamField>
+
+<ParamField path="role" type="WorkspaceRole" default="member">
+  Role to assign to invited members:
+  - `admin` - Full workspace management
+  - `moderator` - Can create and manage events
+  - `member` - View-only access
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  Whether invitations were sent
+</ResponseField>
+
+<ResponseField name="results" type="array">
+  Array of invitation results, each containing:
+  - `email` - Email address
+  - `status` - `sent`, `already_member`, or `failed`
+</ResponseField>
+
+### Invitation Flow
+
+<Steps>
+  <Step title="Permission Check">
+    Only workspace admins can invite members.
+  </Step>
+  
+  <Step title="Membership Verification">
+    System checks if users are already members:
+    
+    ```typescript
+    const existingMember = await db.query.workspace_members.findFirst({
+      where: and(
+        eq(tables.workspace_members.workspace_id, workspaceId),
+        eq(tables.workspace_members.user_id, existingUser.id)
+      )
+    });
+    
+    if (existingMember) {
+      return { status: 'already_member' };
+    }
+    ```
+  </Step>
+  
+  <Step title="Invitation Storage">
+    Invitations are stored in the database with:
+    - Unique token
+    - Expiration date (7 days)
+    - Role assignment
+  </Step>
+  
+  <Step title="Email Notification">
+    Invited users receive an email with:
+    - Workspace information
+    - Invite link
+    - Role details
+    - Inviter information
+    
+    Emails are sent in parallel for better performance.
+  </Step>
+</Steps>
+
+## Join Workspace
+
+Join a workspace using an invite code.
+
+```typescript
+import { joinWorkspace } from '@/app/actions/workspace';
+
+const formData = new FormData();
+formData.append('inviteCode', 'unique_invite_code');
+
+const result = await joinWorkspace(null, formData);
+```
+
+### Parameters
+
+<ParamField path="inviteCode" type="string" required>
+  Unique workspace invite code
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  Whether join was successful
+</ResponseField>
+
+<ResponseField name="workspaceId" type="string">
+  ID of the workspace joined
+</ResponseField>
+
+<ResponseField name="workspaceName" type="string">
+  Name of the workspace
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if join failed
+</ResponseField>
+
+## Workspace Roles
+
+Workspaces support three role levels:
+
+<Tabs>
+  <Tab title="Admin">
+    **Full Management Access**
+    
+    Admins can:
+    - Create, edit, and delete events
+    - Invite and remove members
+    - Update workspace settings
+    - Manage team member roles
+    - Access all analytics and reports
+    - Configure payment settings
+    
+    ```typescript
+    role: WorkspaceRole.ADMIN
+    ```
+  </Tab>
+  
+  <Tab title="Moderator">
+    **Event Management**
+    
+    Moderators can:
+    - Create and edit events
+    - View attendee lists
+    - Scan tickets at events
+    - Access event analytics
+    - Cannot invite members or change settings
+    
+    ```typescript
+    role: WorkspaceRole.MODERATOR
+    ```
+  </Tab>
+  
+  <Tab title="Member">
+    **View-Only Access**
+    
+    Members can:
+    - View workspace events
+    - See team member list
+    - Cannot create events or invite others
+    
+    ```typescript
+    role: WorkspaceRole.MEMBER
+    ```
+  </Tab>
+</Tabs>
+
+### Role Hierarchy
+
+```typescript
+const roleHierarchy = {
+  member: 1,
+  moderator: 2,
+  admin: 3
+};
+
+// Check if user has required role or higher
+if (roleHierarchy[userRole] >= roleHierarchy[requiredRole]) {
+  // Allow access
+}
+```
+
+## Get Workspace Members
+
+Retrieve list of all workspace members.
+
+```typescript
+import { getWorkspaceMembers } from '@/app/actions/workspace';
+
+const members = await getWorkspaceMembers('wks_abc123');
+```
+
+### Response
+
+Array of member objects:
+
+<ResponseField name="id" type="string">
+  Member record ID
+</ResponseField>
+
+<ResponseField name="userId" type="string">
+  User account ID
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  User's display name
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  User's email address
+</ResponseField>
+
+<ResponseField name="avatar" type="string | null">
+  User's avatar URL
+</ResponseField>
+
+<ResponseField name="role" type="WorkspaceRole">
+  Member's role in the workspace
+</ResponseField>
+
+<ResponseField name="joinedDate" type="Date">
+  Date member joined the workspace
+</ResponseField>
+
+<ResponseField name="isYou" type="boolean">
+  True if this is the current user
+</ResponseField>
+
+## Update Member Role
+
+Change a member's role in the workspace.
+
+```typescript
+import { updateMemberRole } from '@/app/actions/workspace';
+import { WorkspaceRole } from '@/lib/db/schema/enums';
+
+const formData = new FormData();
+formData.append('memberId', 'mbr_abc123');
+formData.append('workspaceId', 'wks_xyz789');
+formData.append('role', WorkspaceRole.ADMIN);
+
+const result = await updateMemberRole(null, formData);
+```
+
+### Restrictions
+
+<Warning>
+- Only workspace admins can update roles
+- Cannot change the workspace owner's role
+- Must provide valid role from WorkspaceRole enum
+</Warning>
+
+## Remove Member
+
+Remove a member from the workspace.
+
+```typescript
+import { removeMember } from '@/app/actions/workspace';
+
+const formData = new FormData();
+formData.append('memberId', 'mbr_abc123');
+formData.append('workspaceId', 'wks_xyz789');
+
+const result = await removeMember(null, formData);
+```
+
+### Restrictions
+
+<Warning>
+- Only workspace admins can remove members
+- Cannot remove the workspace owner
+- Member is immediately removed from workspace
+</Warning>
+
+## Workspace Settings
+
+Update various workspace settings.
+
+### Update Workspace Name
+
+```typescript
+import { updateWorkspaceName } from '@/app/actions/workspace';
+
+const result = await updateWorkspaceName(
+  'wks_abc123',
+  'New Organization Name'
+);
+```
+
+### Update Workspace Logo
+
+```typescript
+import { updateWorkspaceLogo } from '@/app/actions/workspace';
+
+const result = await updateWorkspaceLogo(
+  'wks_abc123',
+  'https://storage.example.com/logo.png'
+);
+```
+
+<Note>
+**Image Size Limit:** Logo images must be under 2MB. The system stores base64-encoded images directly in the database.
+</Note>
+
+### Update Social Links
+
+```typescript
+import { updateWorkspaceSocialLinks } from '@/app/actions/workspace';
+
+const result = await updateWorkspaceSocialLinks('wks_abc123', {
+  website: 'https://techevents.com',
+  social_x: 'https://x.com/techevents',
+  social_linkedin: 'https://linkedin.com/company/techevents',
+  social_instagram: 'https://instagram.com/techevents',
+  social_facebook: 'https://facebook.com/techevents',
+  social_github: 'https://github.com/techevents'
+});
+```
+
+All URLs are validated before saving:
+
+```typescript
+.refine(
+  (val) => {
+    if (!val || val === "") return true;
+    try {
+      new URL(val);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  { message: "Invalid URL" }
+)
+```
+
+## Transfer Workspace Ownership
+
+Transfer workspace ownership to another member.
+
+```typescript
+import { transferWorkspace } from '@/app/actions/workspace';
+
+const result = await transferWorkspace(
+  'wks_abc123',
+  'newowner@example.com',
+  'transfer', // Confirmation word
+  '2fa_token' // Required if 2FA enabled
+);
+```
+
+### Parameters
+
+<ParamField path="workspaceId" type="string" required>
+  ID of the workspace to transfer
+</ParamField>
+
+<ParamField path="newOwnerEmail" type="string" required>
+  Email of the new owner (must be a workspace member)
+</ParamField>
+
+<ParamField path="confirmationWord" type="string" required>
+  Must type exactly "TRANSFER" to confirm
+</ParamField>
+
+<ParamField path="verificationToken" type="string">
+  2FA token (required if 2FA is enabled on account)
+</ParamField>
+
+### Transfer Process
+
+<Steps>
+  <Step title="Verification">
+    System verifies:
+    - User is the workspace owner
+    - New owner exists and is a member
+    - Confirmation word is correct
+    - 2FA token is valid (if enabled)
+  </Step>
+  
+  <Step title="Ownership Transfer">
+    ```typescript
+    await db.update(tables.workspace).set({
+      user_id: newOwner.id
+    });
+    ```
+  </Step>
+  
+  <Step title="Role Updates">
+    - Previous owner becomes a MEMBER
+    - New owner becomes ADMIN (if not already)
+  </Step>
+  
+  <Step title="Email Notification">
+    New owner receives confirmation email with full workspace access details.
+  </Step>
+</Steps>
+
+<Warning>
+**Irreversible Action:** Workspace transfer cannot be undone. The new owner gains full control including the ability to remove the previous owner.
+</Warning>
+
+## Delete Workspace
+
+Permanently delete a workspace.
+
+```typescript
+import { deleteWorkspace } from '@/app/actions/workspace';
+
+const result = await deleteWorkspace(
+  'wks_abc123',
+  'delete', // Confirmation word
+  '2fa_token' // Required if 2FA enabled
+);
+```
+
+### Parameters
+
+<ParamField path="workspaceId" type="string" required>
+  ID of the workspace to delete
+</ParamField>
+
+<ParamField path="confirmationWord" type="string" required>
+  Must type exactly "DELETE" to confirm
+</ParamField>
+
+<ParamField path="verificationToken" type="string">
+  2FA token (required if 2FA is enabled)
+</ParamField>
+
+### Deletion Process
+
+<Steps>
+  <Step title="Verification">
+    - Only workspace owner can delete
+    - Confirmation word must be exact
+    - 2FA verification (if enabled)
+  </Step>
+  
+  <Step title="Member Cleanup">
+    All workspace members are removed:
+    
+    ```typescript
+    await db.delete(tables.workspace_members)
+      .where(eq(tables.workspace_members.workspace_id, workspaceId));
+    ```
+  </Step>
+  
+  <Step title="Workspace Deletion">
+    The workspace record is permanently deleted.
+  </Step>
+  
+  <Step title="Redirect">
+    - If user has other workspaces: redirect to dashboard
+    - If no workspaces remain: redirect to no-workspace page
+  </Step>
+</Steps>
+
+<Warning>
+**Permanent Deletion:** Deleting a workspace removes all associated data including events, tickets, and member records. This action cannot be undone.
+</Warning>
+
+## Get Pending Invites
+
+View pending workspace invitations.
+
+```typescript
+import { getPendingInvites } from '@/app/actions/workspace';
+
+const result = await getPendingInvites('wks_abc123');
+```
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  Whether the query was successful
+</ResponseField>
+
+<ResponseField name="invites" type="array">
+  Array of pending invitations, each containing:
+  - `id` - Invitation ID
+  - `email` - Invited email address
+  - `role` - Role to be assigned
+  - `sentAt` - Invitation timestamp
+</ResponseField>
+
+Expired invitations (>7 days old) are automatically filtered out.
+
+## Export Members CSV
+
+Export workspace members as CSV file.
+
+```typescript
+import { exportMembersCSV } from '@/app/actions/workspace';
+
+const result = await exportMembersCSV('wks_abc123');
+
+if (result.success) {
+  // Download or save result.csv
+  const blob = new Blob([result.csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  // Trigger download
+}
+```
+
+### CSV Format
+
+```csv
+Name,Email,Role,Joined Date
+"John Doe","john@example.com","ADMIN","1/15/2024"
+"Jane Smith","jane@example.com","MODERATOR","2/1/2024"
+```
+
+<Note>
+**Admin Only:** Only workspace admins can export member data.
+</Note>
+
+## Error Handling
+
+Common workspace errors:
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `"Only organizers can create workspaces"` | User is an attendee | Switch to organizer account |
+| `"Workspace not found"` | Invalid workspace ID | Verify workspace exists |
+| `"Only workspace admins can invite members"` | Insufficient permissions | Request admin access |
+| `"Invalid invite code"` | Code is wrong or expired | Request new invite |
+| `"You are already a member of this workspace"` | Duplicate join attempt | Already have access |
+| `"Cannot remove workspace owner"` | Attempted to remove owner | Transfer ownership first |
+| `"Cannot change workspace owner's role"` | Attempted role change on owner | Transfer ownership first |
+
+## Complete Example
+
+Complete workspace setup with team:
+
+```typescript
+import { 
+  createWorkspace, 
+  inviteWorkspaceMembers,
+  updateWorkspaceSocialLinks 
+} from '@/app/actions/workspace';
+import { WorkspaceRole } from '@/lib/db/schema/enums';
+
+async function setupWorkspace() {
+  // 1. Create workspace
+  const formData = new FormData();
+  formData.append('name', 'Tech Events Inc');
+  formData.append('description', 'Premium technology conferences');
+  formData.append('website', 'https://techevents.com');
+  formData.append('phone', '+254712345678');
+  
+  const createResult = await createWorkspace(null, formData);
+  
+  if (!createResult.success) {
+    console.error('Failed to create workspace:', createResult.error);
+    return;
+  }
+  
+  const workspaceId = createResult.workspaceId!;
+  console.log('Workspace created:', workspaceId);
+  
+  // 2. Add social links
+  await updateWorkspaceSocialLinks(workspaceId, {
+    social_x: 'https://x.com/techevents',
+    social_linkedin: 'https://linkedin.com/company/techevents',
+    social_github: 'https://github.com/techevents'
+  });
+  
+  // 3. Invite team members
+  const inviteResult = await inviteWorkspaceMembers(
+    workspaceId,
+    [
+      'manager@techevents.com',
+      'coordinator@techevents.com'
+    ],
+    WorkspaceRole.MODERATOR
+  );
+  
+  if (inviteResult.success) {
+    console.log('Invitations sent:', inviteResult.results);
+  }
+  
+  console.log('Workspace setup complete!');
+  return workspaceId;
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Events API" icon="calendar" href="/api/events">
+    Create events in your workspace
+  </Card>
+  <Card title="Users API" icon="user" href="/api/users">
+    Manage user accounts
+  </Card>
+  <Card title="Team Collaboration" icon="users" href="/features/team-collaboration">
+    Learn about team features
+  </Card>
+  <Card title="Workspace Settings" icon="gear" href="/features/workspace-settings">
+    Configure workspace options
+  </Card>
+</CardGroup>

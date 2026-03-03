@@ -1,0 +1,346 @@
+---
+title: 'Team Collaboration'
+description: 'Manage team members, roles, and permissions in your workspace'
+icon: 'users'
+---
+
+EventPalour workspaces support team collaboration with role-based access control. Invite team members, assign roles, and manage permissions to efficiently organize events together.
+
+## Workspace Roles
+
+Every workspace member has one of four roles:
+
+<CardGroup cols={2}>
+  <Card title="Owner" icon="crown">
+    **Full Control**
+    
+    The workspace creator with complete control. Can transfer or delete the workspace.
+    
+    - All admin permissions
+    - Transfer ownership
+    - Delete workspace
+    - Delete account
+    - One owner per workspace
+  </Card>
+
+  <Card title="Admin" icon="shield">
+    **Administrative Access**
+    
+    Manage workspace settings and team members.
+    
+    - Manage workspace settings
+    - View billing and revenue
+    - Invite and remove members
+    - Modify member roles
+    - Create and manage events
+  </Card>
+
+  <Card title="Moderator" icon="user-shield">
+    **Limited Management**
+    
+    Access workspace settings without billing permissions.
+    
+    - Update workspace profile
+    - View workspace settings
+    - Create and manage events
+    - View team members
+    - Cannot access billing
+  </Card>
+
+  <Card title="Member" icon="user">
+    **Basic Access**
+    
+    Participate in workspace activities.
+    
+    - View workspace dashboard
+    - Create events
+    - Manage own events
+    - View team members
+    - No settings access
+  </Card>
+</CardGroup>
+
+## Inviting Team Members
+
+<Steps>
+  <Step title="Navigate to Members Page">
+    From your workspace dashboard, click **Members** in the sidebar to access team management.
+  </Step>
+
+  <Step title="Click Add Member">
+    Click the **Add Member** button in the top-right corner to open the invitation sheet.
+  </Step>
+
+  <Step title="Enter Member Details">
+    Provide the following information:
+    
+    - **Email Address**: The team member's email (required)
+    - **Role**: Select Admin, Moderator, or Member (default: Member)
+
+    <Note>
+      Invited members receive an email invitation with a unique token that expires after a set period.
+    </Note>
+  </Step>
+
+  <Step title="Send Invitation">
+    Click **Send Invitation** to create the pending invite. The system will:
+    
+    - Generate a unique invitation token
+    - Send an email to the recipient
+    - Create a pending invitation record
+    - Set an expiration date
+  </Step>
+</Steps>
+
+## Invitation Flow
+
+### For Existing Users
+
+1. Recipient receives invitation email
+2. Clicks invitation link with token
+3. Signs in to their account
+4. Automatically joins workspace with assigned role
+5. Redirected to workspace dashboard
+
+### For New Users
+
+1. Recipient receives invitation email
+2. Clicks invitation link
+3. Prompted to create an account or sign in
+4. Completes registration
+5. Automatically joins workspace after sign-in
+6. Redirected to workspace dashboard
+
+## Managing Team Members
+
+### Viewing Members
+
+The Members page displays:
+- Member name and email
+- Profile avatar
+- Current role
+- Join date
+- Your own membership highlighted
+
+### Changing Roles
+
+<Steps>
+  <Step title="Navigate to Members">
+    Go to **Members** in your workspace sidebar.
+  </Step>
+
+  <Step title="Select Member">
+    Find the team member whose role you want to change.
+  </Step>
+
+  <Step title="Update Role">
+    Click on their current role and select a new role from the dropdown:
+    - Admin
+    - Moderator
+    - Member
+
+    <Warning>
+      Only admins and owners can change member roles. You cannot change the owner's role.
+    </Warning>
+  </Step>
+
+  <Step title="Confirm Changes">
+    The role updates immediately and the member's permissions change across the workspace.
+  </Step>
+</Steps>
+
+### Removing Members
+
+<Note>
+  Only workspace admins and owners can remove team members.
+</Note>
+
+<Steps>
+  <Step title="Access Member Actions">
+    On the Members page, find the member you want to remove.
+  </Step>
+
+  <Step title="Click Remove">
+    Click the **Remove** button next to their name.
+  </Step>
+
+  <Step title="Confirm Removal">
+    Confirm the action in the dialog. The member will:
+    - Lose access to the workspace
+    - Be removed from all workspace activities
+    - No longer see workspace events in their dashboard
+  </Step>
+</Steps>
+
+## Using Invite Codes
+
+Every workspace has a unique invite code for quick team invitations.
+
+### Sharing Invite Codes
+
+1. Navigate to **Settings** > **General**
+2. Copy the workspace invite code
+3. Share with team members via any channel
+
+### Joining with Invite Code
+
+<Steps>
+  <Step title="Navigate to Join Page">
+    Go to `eventpalour.com/workspace/join?code={inviteCode}`
+  </Step>
+
+  <Step title="Sign In">
+    If not authenticated, sign in or create an account.
+  </Step>
+
+  <Step title="Auto-Join">
+    The system automatically adds you to the workspace with the default Member role.
+  </Step>
+</Steps>
+
+<Warning>
+  Invite codes provide immediate Member-level access. For specific roles, use email invitations instead.
+</Warning>
+
+## Permission Matrix
+
+| Action | Owner | Admin | Moderator | Member |
+|--------|-------|-------|-----------|--------|
+| Create Events | ✓ | ✓ | ✓ | ✓ |
+| Manage Own Events | ✓ | ✓ | ✓ | ✓ |
+| View Members | ✓ | ✓ | ✓ | ✓ |
+| Update Workspace Profile | ✓ | ✓ | ✓ | ✗ |
+| Invite Members | ✓ | ✓ | ✗ | ✗ |
+| Remove Members | ✓ | ✓ | ✗ | ✗ |
+| Change Member Roles | ✓ | ✓ | ✗ | ✗ |
+| View Billing | ✓ | ✓ | ✗ | ✗ |
+| Manage Payments | ✓ | ✓ | ✗ | ✗ |
+| Update Settings | ✓ | ✓ | ✓ | ✗ |
+| Transfer Ownership | ✓ | ✗ | ✗ | ✗ |
+| Delete Workspace | ✓ | ✗ | ✗ | ✗ |
+
+## Workspace Members Schema
+
+Team membership data structure:
+
+```typescript
+{
+  id: string;           // Unique member ID
+  user_id: string;      // User account ID
+  workspace_id: string; // Workspace ID
+  role: WorkspaceRole;  // 'admin' | 'moderator' | 'member'
+}
+```
+
+## Invitation Schema
+
+Pending invitations include:
+
+```typescript
+{
+  id: string;
+  workspace_id: string;
+  email: string;              // Invitee email
+  role: WorkspaceRole;        // Assigned role
+  invited_by: string;         // Inviter user ID
+  token: string;              // Unique 64-char token
+  accepted: boolean;          // Acceptance status
+  expires_at: Date;           // Expiration timestamp
+  created_at: Date;
+  updated_at: Date;
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Assign Roles Carefully">
+    Grant the minimum permissions necessary for each team member's responsibilities. Only trusted team members should have Admin access to billing and sensitive settings.
+  </Accordion>
+
+  <Accordion title="Regular Team Audits">
+    Periodically review your team members list and remove inactive or departed members to maintain security.
+  </Accordion>
+
+  <Accordion title="Use Email Invitations for Specific Roles">
+    While invite codes are convenient, use email invitations when you need to assign specific roles (Admin or Moderator).
+  </Accordion>
+
+  <Accordion title="Protect Your Invite Code">
+    Treat your workspace invite code like a password. Share it only with trusted team members, as anyone with the code can join your workspace.
+  </Accordion>
+
+  <Accordion title="Owner Responsibilities">
+    As the workspace owner, you're responsible for all workspace activities. Consider having at least one Admin backup for continuity.
+  </Accordion>
+</AccordionGroup>
+
+## Collaboration Features
+
+### Shared Event Management
+
+All workspace members can:
+- Create events under the workspace
+- View all workspace events
+- Manage events based on their role
+- Access workspace branding and assets
+
+### Unified Billing
+
+Revenue from all events flows to the workspace:
+- Centralized billing dashboard
+- Combined revenue tracking
+- Single withdrawal account
+- Unified transaction history
+
+### Brand Consistency
+
+Workspace members maintain consistent branding:
+- Shared workspace logo
+- Common social media links
+- Unified contact information
+- Consistent event styling
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Invitation email not received">
+    Check:
+    - Email address is correct
+    - Spam/junk folder
+    - Email service is not blocking EventPalour
+    - Invitation hasn't expired
+  </Accordion>
+
+  <Accordion title="Cannot remove a member">
+    Ensure:
+    - You have Admin or Owner permissions
+    - You're not trying to remove yourself (use Leave Workspace instead)
+    - The member exists in the workspace
+  </Accordion>
+
+  <Accordion title="Role changes not taking effect">
+    Role changes are immediate. If permissions don't update:
+    - Refresh the page
+    - Sign out and sign back in
+    - Check if you have permission to change roles
+  </Accordion>
+
+  <Accordion title="Invite code not working">
+    Verify:
+    - Code is entered correctly (case-sensitive)
+    - You're signed in to an account
+    - You're not already a member of the workspace
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure Settings" icon="gear" href="/workspace/settings">
+    Customize workspace profile and preferences
+  </Card>
+  <Card title="Manage Billing" icon="credit-card" href="/workspace/billing">
+    View revenue and manage withdrawals
+  </Card>
+</CardGroup>

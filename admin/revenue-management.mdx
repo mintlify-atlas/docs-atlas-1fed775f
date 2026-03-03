@@ -1,0 +1,417 @@
+---
+title: Revenue Management
+description: Platform revenue tracking, financial metrics, and payment monitoring
+---
+
+## Overview
+
+The Revenue Management section provides comprehensive financial tracking for the EventPalour platform, including platform fees, payment processing, revenue analytics, and financial reporting.
+
+## Accessing Revenue Management
+
+Navigate to `/admin/revenue` to view financial metrics:
+
+```typescript
+// app/admin/revenue/page.tsx:55-92
+async function DynamicContent({ user: adminUser }: { user: User }) {
+  // Get platform revenue stats
+  const [platformRevenueResult] = await db
+    .select({
+      total: sum(tables.payments.platform_fee),
+      count: count(),
+    })
+    .from(tables.payments)
+    .where(eq(tables.payments.status, PaymentStatus.COMPLETED));
+
+  const [totalRevenueResult] = await db
+    .select({ total: sum(tables.payments.amount) })
+    .from(tables.payments)
+    .where(eq(tables.payments.status, PaymentStatus.COMPLETED));
+}
+```
+
+## Payment Structure
+
+EventPalour uses a fee-based revenue model with clear breakdowns:
+
+### Payment Schema
+
+```typescript
+// lib/db/schema/payments.ts:56-102
+export const payments = pgTable("payments", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  provider: payment_provider_enum("provider").notNull(),
+  provider_reference: varchar("provider_reference", { length: 255 }).notNull(),
+  status: payment_status_enum("status").notNull(),
+  
+  // Ticket and buyer information
+  ticket_id: varchar("ticket_id", { length: 16 }).notNull(),
+  buyer_id: varchar("buyer_id", { length: 16 }).notNull(),
+  
+  // Amounts (all in decimal/numeric - NEVER use float)
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull(),
+  
+  // Fee breakdown
+  platform_fee: numeric("platform_fee", { precision: 10, scale: 2 }).notNull(),
+  provider_fee: numeric("provider_fee", { precision: 10, scale: 2 }).notNull(),
+  organizer_share: numeric("organizer_share", { precision: 10, scale: 2 }).notNull(),
+});
+```
+
+### Payment Status Types
+
+```typescript
+// lib/db/schema/payments.ts:21-28
+export enum PaymentStatus {
+  PENDING = "pending",
+  PROCESSING = "processing",
+  COMPLETED = "completed",
+  FAILED = "failed",
+  REFUNDED = "refunded",
+  CANCELLED = "cancelled",
+}
+```
+
+## Revenue Metrics
+
+### Platform Revenue
+
+Total platform fees collected from all completed payments:
+
+```typescript
+// dal/admin-metrics.ts:58-66
+const [platformRevenueResult] = await db
+  .select({ total: sum(tables.payments.platform_fee) })
+  .from(tables.payments)
+  .where(eq(tables.payments.status, PaymentStatus.COMPLETED));
+
+const platformRevenue = Number(platformRevenueResult?.total ?? 0);
+```
+
+### Total Revenue
+
+All completed payment amounts:
+
+```typescript
+// dal/admin-metrics.ts:68-76
+const [totalRevenueResult] = await db
+  .select({ total: sum(tables.payments.amount) })
+  .from(tables.payments)
+  .where(eq(tables.payments.status, PaymentStatus.COMPLETED));
+
+const totalRevenue = Number(totalRevenueResult?.total ?? 0);
+```
+
+### Revenue Growth
+
+7-day comparison for growth tracking:
+
+```typescript
+// dal/admin-metrics.ts:178-212
+const previous7DaysStart = subDays(now, 14);
+
+const [revenueLast7dResult] = await db
+  .select({ total: sum(tables.payments.platform_fee) })
+  .from(tables.payments)
+  .where(
+    and(
+      gte(tables.payments.created_at, last7Days),
+      eq(tables.payments.status, PaymentStatus.COMPLETED)
+    )
+  );
+
+const [revenuePrevious7dResult] = await db
+  .select({ total: sum(tables.payments.platform_fee) })
+  .from(tables.payments)
+  .where(
+    and(
+      gte(tables.payments.created_at, previous7DaysStart),
+      lt(tables.payments.created_at, last7Days),
+      eq(tables.payments.status, PaymentStatus.COMPLETED)
+    )
+  );
+
+const revenueLast7d = Number(revenueLast7dResult?.total ?? 0);
+const revenuePrevious7d = Number(revenuePrevious7dResult?.total ?? 0);
+const revenueGrowth =
+  revenuePrevious7d > 0
+    ? ((revenueLast7d - revenuePrevious7d) / revenuePrevious7d) * 100
+    : revenueLast7d > 0 ? 100 : 0;
+```
+
+## Fee Breakdown
+
+### Platform Fee
+
+The platform's commission on each ticket sale:
+- Stored in `payments.platform_fee`
+- Used for platform revenue calculations
+- Displayed in admin revenue dashboard
+
+### Provider Fee
+
+Payment processor fees (Paystack, Stripe, M-Pesa):
+
+```typescript
+// app/admin/revenue/page.tsx:87-92
+const [providerFeeResult] = await db
+  .select({ total: sum(tables.payments.provider_fee) })
+  .from(tables.payments)
+  .where(eq(tables.payments.status, PaymentStatus.COMPLETED));
+```
+
+### Organizer Share
+
+Amount paid to event organizers after fees:
+
+```typescript
+// app/admin/revenue/page.tsx:80-85
+const [organizerShareResult] = await db
+  .select({ total: sum(tables.payments.organizer_share) })
+  .from(tables.payments)
+  .where(eq(tables.payments.status, PaymentStatus.COMPLETED));
+```
+
+## Payment Providers
+
+EventPalour supports multiple payment providers:
+
+```typescript
+// lib/db/schema/payments.ts:8-12
+export enum PaymentProvider {
+  PAYSTACK = "paystack",
+  MPESA = "mpesa",
+  STRIPE = "stripe",
+}
+```
+
+Each provider has:
+- Unique transaction reference
+- Provider-specific fees
+- Different processing times
+- Regional availability
+
+## Recent Payments
+
+The revenue dashboard displays recent payment activity:
+
+```typescript
+// app/admin/revenue/page.tsx:95-110
+const recentPayments = await db
+  .select({
+    id: tables.payments.id,
+    amount: tables.payments.amount,
+    platform_fee: tables.payments.platform_fee,
+    currency: tables.payments.currency,
+    status: tables.payments.status,
+    created_at: tables.payments.created_at,
+    buyer: {
+      email: tables.user.email,
+    },
+  })
+  .from(tables.payments)
+  .innerJoin(tables.user, eq(tables.payments.buyer_id, tables.user.id))
+  .orderBy(desc(tables.payments.created_at))
+  .limit(20);
+```
+
+Displays:
+- Payment ID
+- Amount and currency
+- Platform fee collected
+- Payment status
+- Buyer email
+- Timestamp
+
+## Failed Payment Tracking
+
+Monitor payment failures for issue detection:
+
+### Recent Failures (24 hours)
+
+```typescript
+// dal/admin-metrics.ts:153-166
+const [failedPayments24hResult] = await db
+  .select({ count: count() })
+  .from(tables.payments)
+  .where(
+    and(
+      gte(tables.payments.created_at, last24Hours),
+      eq(tables.payments.status, PaymentStatus.FAILED)
+    )
+  );
+
+const failedPayments24h = failedPayments24hResult?.count ?? 0;
+```
+
+### Total Failed Payments
+
+```typescript
+// dal/admin-metrics.ts:168-176
+const [totalFailedPaymentsResult] = await db
+  .select({ count: count() })
+  .from(tables.payments)
+  .where(eq(tables.payments.status, PaymentStatus.FAILED));
+
+const totalFailedPayments = totalFailedPaymentsResult?.count ?? 0;
+```
+
+## Revenue Charts
+
+### 30-Day Revenue Chart
+
+Daily platform fee collection:
+
+```typescript
+// dal/admin-metrics.ts:250-272
+const revenueChartData = [];
+for (let i = 29; i >= 0; i--) {
+  const dayStart = subDays(now, i + 1);
+  const dayEnd = subDays(now, i);
+
+  const [dayRevenue] = await db
+    .select({ total: sum(tables.payments.platform_fee) })
+    .from(tables.payments)
+    .where(
+      and(
+        gte(tables.payments.created_at, dayStart),
+        lt(tables.payments.created_at, dayEnd),
+        eq(tables.payments.status, PaymentStatus.COMPLETED)
+      )
+    );
+
+  revenueChartData.push({
+    date: format(dayStart, "MMM d"),
+    revenue: Number(dayRevenue?.total ?? 0),
+  });
+}
+```
+
+Displayed as an area chart showing revenue trends.
+
+## Blue Tickets (Verified Channels)
+
+Blue ticket verification requests are tracked separately:
+
+```typescript
+// dal/admin-metrics.ts:119-132
+const [blueTicketRequestsResult] = await db
+  .select({ count: count() })
+  .from(tables.channels)
+  .where(
+    and(
+      eq(tables.channels.verification_requested, true),
+      eq(tables.channels.is_verified, false)
+    )
+  );
+
+const blueTicketRequests = blueTicketRequestsResult?.count ?? 0;
+```
+
+Blue tickets are verified badges for official/notable channels.
+
+## Withdrawal Management
+
+Organizers can request withdrawals of their earnings:
+
+```typescript
+// lib/db/schema/payments.ts:104-151
+export const withdrawals = pgTable("withdrawals", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  workspace_id: varchar("workspace_id", { length: 16 }).notNull(),
+  requested_by: varchar("requested_by", { length: 16 }).notNull(),
+  
+  // Amounts
+  requested_amount: numeric("requested_amount", { precision: 10, scale: 2 }).notNull(),
+  withdrawal_fee: numeric("withdrawal_fee", { precision: 10, scale: 2 }).notNull(),
+  net_amount: numeric("net_amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull(),
+  
+  // Status
+  status: withdrawal_status_enum("status").notNull(),
+  
+  // Bank/payment details
+  account_number: varchar("account_number", { length: 50 }),
+  account_name: varchar("account_name", { length: 255 }),
+  bank_name: varchar("bank_name", { length: 255 }),
+});
+```
+
+### Withdrawal Status
+
+```typescript
+// lib/db/schema/payments.ts:40-46
+export enum WithdrawalStatus {
+  PENDING = "pending",
+  PROCESSING = "processing",
+  COMPLETED = "completed",
+  FAILED = "failed",
+  CANCELLED = "cancelled",
+}
+```
+
+## Revenue Client Component
+
+The revenue management interface provides:
+
+```typescript
+// app/admin/revenue/page.tsx:112-124
+<RevenueManagementClient
+  platformRevenue={Number(platformRevenueResult?.total ?? 0)}
+  totalRevenue={Number(totalRevenueResult?.total ?? 0)}
+  organizerShare={Number(organizerShareResult?.total ?? 0)}
+  providerFees={Number(providerFeeResult?.total ?? 0)}
+  totalTransactions={platformRevenueResult?.count ?? 0}
+  recentPayments={recentPayments}
+/>
+```
+
+Features:
+- Real-time revenue metrics
+- Payment list with search/filter
+- Revenue trend charts
+- Export capabilities
+
+## Audit Logging
+
+All revenue page access is logged:
+
+```typescript
+// app/admin/revenue/page.tsx:56-62
+await logSuperAdminAccess(
+  adminUser.id,
+  "VIEWED_REVENUE_MANAGEMENT",
+  undefined,
+  adminUser.email
+);
+```
+
+## Financial Reporting
+
+Key financial metrics tracked:
+
+1. **Platform Revenue**: Total platform fees collected
+2. **Total Revenue**: All completed payment amounts
+3. **Organizer Share**: Amount paid to organizers
+4. **Provider Fees**: Payment processor charges
+5. **Transaction Count**: Number of completed payments
+6. **Failed Payments**: Payment failures requiring attention
+7. **Revenue Growth**: 7-day percentage change
+
+## Best Practices
+
+1. **Daily Monitoring**: Review revenue metrics daily
+2. **Failed Payments**: Investigate spikes in failed payments immediately
+3. **Growth Tracking**: Monitor 7-day trends for anomalies
+4. **Provider Fees**: Compare provider fees to optimize costs
+5. **Reconciliation**: Regular reconciliation with payment provider statements
+6. **Withdrawal Processing**: Process organizer withdrawals promptly
+7. **Currency Handling**: Always use decimal/numeric types, never floats
+
+## Related Documentation
+
+- [Admin Overview](/admin/overview)
+- [KYC Approval](/admin/kyc-approval)
+- [Audit Logs](/admin/audit-logs)
+- [User Management](/admin/user-management)

@@ -1,0 +1,466 @@
+---
+title: Tickets API
+description: Book tickets, manage registrations, and handle ticket transfers
+---
+
+## Overview
+
+The Tickets API handles ticket booking for both free and paid events, including registration management, ticket transfers, and QR code generation for event check-in.
+
+## Book Event Ticket
+
+Purchase tickets for a paid event.
+
+```typescript
+import { bookEventTicket } from '@/app/actions/tickets';
+
+const result = await bookEventTicket({
+  eventId: 'evt_abc123',
+  tickets: [
+    {
+      ticketId: 'tkt_early_bird',
+      quantity: 2
+    },
+    {
+      ticketId: 'tkt_vip',
+      quantity: 1
+    }
+  ]
+});
+```
+
+### Parameters
+
+<ParamField path="eventId" type="string" required>
+  ID of the event to book tickets for
+</ParamField>
+
+<ParamField path="tickets" type="array" required>
+  Array of ticket selections. Each item contains:
+  
+  - `ticketId` (string): ID of the ticket type
+  - `quantity` (number): Number of tickets to book (minimum 1)
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  Whether the booking was successful
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if booking failed
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "success": true
+}
+```
+
+## How Ticket Booking Works
+
+<Steps>
+  <Step title="Authentication Check">
+    User must be authenticated to book tickets.
+  </Step>
+  
+  <Step title="Ticket Validation">
+    System validates:
+    - Event exists and is active
+    - All ticket IDs belong to the event
+    - Sufficient tickets are available
+    - Ticket quantities are valid (≥ 1)
+  </Step>
+  
+  <Step title="Availability Check">
+    For each ticket type, the system checks:
+    
+    ```typescript
+    const totalPurchased = // Sum of all purchased tickets
+    const remaining = availabilityQuantity - totalPurchased;
+    
+    if (quantity > remaining) {
+      return { error: "Not enough tickets available" };
+    }
+    ```
+  </Step>
+  
+  <Step title="Batch Insert">
+    Tickets are created using a single batch insert for performance:
+    
+    ```typescript
+    // Create all tickets in one database operation
+    const purchasedTickets = await db
+      .insert(tables.purchased_tickets)
+      .values(purchasedTicketValues)
+      .returning({ id: tables.purchased_tickets.id });
+    ```
+  </Step>
+  
+  <Step title="Confirmation Email">
+    System sends a confirmation email with:
+    - Event details
+    - Ticket information
+    - QR code for check-in
+    - Calendar invite
+  </Step>
+  
+  <Step title="Queue Counter Update">
+    If event has queue management enabled, the counter is decremented.
+  </Step>
+</Steps>
+
+## Register for Free Event
+
+Register for a free event without payment.
+
+```typescript
+import { registerForFreeEvent } from '@/app/actions/tickets';
+
+const result = await registerForFreeEvent({
+  eventId: 'evt_abc123'
+});
+```
+
+### Parameters
+
+<ParamField path="eventId" type="string" required>
+  ID of the free event to register for
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  Whether registration was successful
+</ResponseField>
+
+<ResponseField name="alreadyRegistered" type="boolean">
+  True if user was already registered for this event
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if registration failed
+</ResponseField>
+
+### Validation
+
+<Warning>
+**Free Events Only:** This endpoint only works for events with `pricing: FREE`. For paid events, use `bookEventTicket()` instead.
+</Warning>
+
+```typescript
+if (event.pricing !== EventPricing.FREE) {
+  return { error: "This event requires ticket purchase" };
+}
+```
+
+## Check Event Registration
+
+Check if the current user is registered for an event.
+
+```typescript
+import { checkEventRegistration } from '@/app/actions/tickets';
+
+const result = await checkEventRegistration('evt_abc123');
+
+if (result.isRegistered) {
+  console.log('User is already registered');
+}
+```
+
+### Parameters
+
+<ParamField path="eventId" type="string" required>
+  ID of the event to check
+</ParamField>
+
+### Response
+
+<ResponseField name="isRegistered" type="boolean">
+  True if user is registered, false otherwise
+</ResponseField>
+
+## Transfer Ticket
+
+Transfer a purchased ticket to another user.
+
+```typescript
+import { transferTicket } from '@/app/actions/tickets';
+
+const result = await transferTicket({
+  purchasedTicketId: 'ptkt_abc123',
+  recipientEmail: 'friend@example.com'
+});
+```
+
+### Parameters
+
+<ParamField path="purchasedTicketId" type="string" required>
+  ID of the purchased ticket to transfer
+</ParamField>
+
+<ParamField path="recipientEmail" type="string" required>
+  Email address of the recipient (must be a registered user)
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  Whether transfer was successful
+</ResponseField>
+
+<ResponseField name="recipientId" type="string">
+  User ID of the recipient
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if transfer failed
+</ResponseField>
+
+## Transfer Validation Rules
+
+Ticket transfers are subject to several validation rules:
+
+<AccordionGroup>
+  <Accordion title="Ownership Verification">
+    Only the ticket owner can initiate a transfer:
+    
+    ```typescript
+    if (purchasedTicket.userId !== user.id) {
+      return { error: "You don't have permission to transfer this ticket" };
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Recipient Requirements">
+    - Recipient must have an EventPalour account
+    - Cannot transfer to yourself
+    - Recipient must not already be registered for the event
+    
+    ```typescript
+    if (recipient.id === user.id) {
+      return { error: "You cannot transfer a ticket to yourself" };
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Ticket Status Check">
+    Tickets can only be transferred if they are:
+    - Not already used (scanned at event)
+    - Not cancelled
+    - Not refunded
+    - Not previously transferred
+    
+    ```typescript
+    const invalidStatuses = [
+      TicketStatus.CANCELLED,
+      TicketStatus.REFUNDED,
+      TicketStatus.TRANSFERRED
+    ];
+    
+    if (ticket.used || invalidStatuses.includes(ticket.status)) {
+      return { error: "This ticket cannot be transferred" };
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="One Transfer Per Ticket">
+    Each ticket can only be transferred once:
+    
+    ```typescript
+    const existingTransfer = await db.query.ticket_transfers.findFirst({
+      where: eq(tables.ticket_transfers.purchased_ticket_id, ticketId)
+    });
+    
+    if (existingTransfer) {
+      return { error: "This ticket has already been transferred" };
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Transfer Process
+
+When a ticket is transferred:
+
+<Steps>
+  <Step title="Transfer Record Created">
+    A record is created in the `ticket_transfers` table tracking:
+    - Original owner ID
+    - New owner ID
+    - Transfer timestamp
+  </Step>
+  
+  <Step title="Ownership Updated">
+    The purchased ticket record is updated:
+    
+    ```typescript
+    await db.update(tables.purchased_tickets).set({
+      user_id: recipient.id,
+      status: TicketStatus.TRANSFERRED,
+      updated_at: new Date()
+    });
+    ```
+  </Step>
+  
+  <Step title="Notification Sent">
+    The recipient receives an email with:
+    - Transfer details
+    - Event information
+    - New QR code for check-in
+    - Sender information
+  </Step>
+</Steps>
+
+## Ticket Statuses
+
+Tickets progress through various statuses:
+
+```typescript
+enum TicketStatus {
+  AVAILABLE = "available",   // Available for purchase
+  RESERVED = "reserved",     // Temporarily held during checkout
+  SOLD = "sold",             // Successfully purchased
+  CANCELLED = "cancelled",   // Booking cancelled
+  REFUNDED = "refunded",     // Payment refunded
+  TRANSFERRED = "transferred", // Transferred to another user
+  USED = "used",             // Scanned/redeemed at event
+  EXPIRED = "expired",       // Validity period expired
+  ON_HOLD = "on_hold"        // Admin hold
+}
+```
+
+## QR Code Check-In
+
+Each purchased ticket includes a unique QR code for event check-in:
+
+<Tabs>
+  <Tab title="QR Code Format">
+    QR codes encode the purchased ticket ID:
+    
+    ```typescript
+    const qrCodeData = {
+      purchasedTicketId: 'ptkt_abc123',
+      eventShortId: 'xyz789',
+      userId: 'usr_def456'
+    };
+    ```
+    
+    Organizers scan the QR code to verify and mark tickets as used.
+  </Tab>
+  
+  <Tab title="Email Delivery">
+    QR codes are included in:
+    - Initial ticket confirmation email
+    - Transfer notification email
+    - Can be regenerated from user dashboard
+    
+    ```typescript
+    react: React.createElement(TicketConfirmationEmail, {
+      purchasedTicketId: purchasedTicketIds[0],
+      eventShortId: event.short_id,
+      // ... other event details
+    })
+    ```
+  </Tab>
+  
+  <Tab title="Scanning Process">
+    At the event, organizers:
+    1. Scan attendee QR code
+    2. System validates ticket:
+       - Belongs to the event
+       - Not already used
+       - Not cancelled/refunded
+    3. Marks ticket as USED
+    4. Shows attendee information
+    
+    <Note>
+    Each QR code can only be scanned once per event to prevent duplicate check-ins.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Error Handling
+
+Common ticket booking errors:
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `"Authentication required"` | User not signed in | Sign in before booking |
+| `"Event not found"` | Invalid event ID | Verify event exists |
+| `"Invalid ticket"` | Ticket doesn't belong to event | Check ticket ID |
+| `"Not enough tickets available"` | Sold out | Choose different ticket type or quantity |
+| `"This event requires ticket purchase"` | Called registerForFreeEvent on paid event | Use bookEventTicket instead |
+| `"Recipient not found"` | Transfer to non-existent user | Recipient must create account first |
+| `"This ticket has already been transferred"` | Double transfer attempt | Ticket can only be transferred once |
+
+## Complete Booking Example
+
+Booking multiple ticket types with error handling:
+
+```typescript
+import { bookEventTicket } from '@/app/actions/tickets';
+import { EventPricing } from '@/lib/db/schema/enums';
+
+async function bookTickets(eventId: string, event: Event) {
+  // Check if event is free or paid
+  if (event.pricing === EventPricing.FREE) {
+    const result = await registerForFreeEvent({ eventId });
+    
+    if (result.alreadyRegistered) {
+      console.log('Already registered for this event');
+      return;
+    }
+    
+    if (!result.success) {
+      console.error('Registration failed:', result.error);
+      return;
+    }
+    
+    console.log('Successfully registered!');
+    return;
+  }
+  
+  // For paid events
+  const result = await bookEventTicket({
+    eventId,
+    tickets: [
+      { ticketId: 'tkt_early_bird', quantity: 2 },
+      { ticketId: 'tkt_vip', quantity: 1 }
+    ]
+  });
+  
+  if (!result.success) {
+    console.error('Booking failed:', result.error);
+    
+    // Handle specific error cases
+    if (result.error?.includes('not enough')) {
+      console.log('Tickets sold out, try different type');
+    }
+    return;
+  }
+  
+  console.log('Tickets booked successfully!');
+  console.log('Check your email for confirmation and QR codes');
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Payments API" icon="credit-card" href="/api/payments">
+    Process ticket payments
+  </Card>
+  <Card title="Events API" icon="calendar" href="/api/events">
+    Manage event details
+  </Card>
+  <Card title="Email Notifications" icon="envelope" href="/features/email-notifications">
+    Learn about ticket emails
+  </Card>
+  <Card title="QR Code Scanning" icon="qrcode" href="/features/qr-scanning">
+    Check in attendees at events
+  </Card>
+</CardGroup>

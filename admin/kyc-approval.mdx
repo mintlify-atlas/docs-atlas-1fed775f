@@ -1,0 +1,375 @@
+---
+title: KYC Approval Process
+description: Managing organizer verification and KYC approval workflow
+---
+
+## Overview
+
+KYC (Know Your Customer) verification is required for organizers who want to create paid events on EventPalour. The KYC approval process ensures that organizers provide valid identification and business documentation before they can collect payments.
+
+## Accessing KYC Management
+
+Navigate to `/admin/kyc` to review KYC applications:
+
+```typescript
+// app/admin/kyc/page.tsx:4-6
+import { getAllKycApplications, getKycCountsByStatus } from "@/dal/kyc-admin";
+
+const [allApplications, counts] = await Promise.all([
+  getAllKycApplications(),
+  getKycCountsByStatus(),
+]);
+```
+
+## KYC Status Types
+
+Applications can have five different statuses:
+
+```typescript
+// lib/db/schema/enums.ts:59-65
+export enum KycStatus {
+  NOT_SUBMITTED = "not_submitted",
+  PENDING = "pending",
+  APPROVED = "approved",
+  REJECTED = "rejected",
+  REQUIRES_UPDATE = "requires_update",
+}
+```
+
+### Status Definitions
+
+**NOT_SUBMITTED**
+- Organizer has not submitted KYC application
+- Default state for new organizers
+- Cannot create paid events
+
+**PENDING**
+- Application submitted and awaiting admin review
+- All required documents uploaded
+- Appears in admin pending queue
+
+**APPROVED**
+- Application approved by admin
+- Organizer can create paid events
+- Counted as "paid organizer" in metrics
+
+**REJECTED**
+- Application rejected due to invalid/fraudulent documents
+- Organizer cannot create paid events
+- Must resubmit with corrected information
+
+**REQUIRES_UPDATE**
+- Application needs additional information or corrections
+- Organizer can update and resubmit
+- More lenient than full rejection
+
+## Verification Requirements
+
+Standard KYC requirements displayed to admins:
+
+```typescript
+// app/admin/kyc/page.tsx:36-44
+<div>
+  <p className="font-medium">Standard Requirements:</p>
+  <ul className="list-disc list-inside text-muted-foreground mt-1 space-y-1">
+    <li>Profile image (optional)</li>
+    <li>ID/License or Passport documents</li>
+    <li>Full name (as per ID document)</li>
+    <li>Phone number</li>
+    <li>Date of birth</li>
+  </ul>
+</div>
+```
+
+### Document Types
+
+```typescript
+// lib/db/schema/enums.ts:67-72
+export enum KycDocumentType {
+  NATIONAL_ID = "national_id",
+  PASSPORT = "passport",
+  BUSINESS_REGISTRATION = "business_registration",
+  TAX_ID = "tax_id", // KRA PIN for Kenya
+}
+```
+
+## Reviewing Applications
+
+### Fetching Applications
+
+Retrieve all KYC applications with user information:
+
+```typescript
+// dal/kyc-admin.ts:8-33
+export const getAllKycApplications = cache(async (status?: KycStatus) => {
+  const baseQuery = db
+    .select({
+      kyc: tables.kyc,
+      user: {
+        id: tables.user.id,
+        email: tables.user.email,
+        username: tables.user.username,
+        avatar: tables.user.avatar,
+      },
+    })
+    .from(tables.kyc)
+    .innerJoin(tables.user, eq(tables.kyc.user_id, tables.user.id));
+
+  const queryWithWhere = status
+    ? baseQuery.where(eq(tables.kyc.status, status))
+    : baseQuery;
+
+  return await queryWithWhere.orderBy(desc(tables.kyc.created_at));
+});
+```
+
+### Status Counts
+
+Track applications by status:
+
+```typescript
+// dal/kyc-admin.ts:59-90
+export const getKycCountsByStatus = cache(async () => {
+  const allKyc = await db.select().from(tables.kyc);
+
+  const counts = {
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    requires_update: 0,
+    total: allKyc.length,
+  };
+
+  for (const kyc of allKyc) {
+    const status = kyc.status as KycStatus;
+    if (status === KycStatus.PENDING) counts.pending++;
+    else if (status === KycStatus.APPROVED) counts.approved++;
+    else if (status === KycStatus.REJECTED) counts.rejected++;
+    else if (status === KycStatus.REQUIRES_UPDATE) counts.requires_update++;
+  }
+
+  return counts;
+});
+```
+
+## Approval Workflow
+
+### Updating KYC Status
+
+Admins can approve, reject, or request updates:
+
+```typescript
+// app/actions/kyc-admin.ts:29-58
+export async function updateKycStatus(formData: FormData) {
+  const { user } = await requireSuperAdmin();
+
+  const validatedData = updateKycStatusSchema.parse({
+    kycId: formData.get("kycId") as string,
+    status: formData.get("status") as string,
+    reason: formData.get("reason") as string | null,
+  });
+
+  // Update KYC status
+  await db
+    .update(tables.kyc)
+    .set({
+      status: validatedData.status,
+      updated_at: new Date(),
+    })
+    .where(eq(tables.kyc.id, validatedData.kycId));
+}
+```
+
+### Audit Logging
+
+All KYC decisions are logged:
+
+```typescript
+// app/actions/kyc-admin.ts:61-72
+await logSuperAdminAccess(
+  user.id,
+  `KYC_${validatedData.status.toUpperCase()}`,
+  {
+    kycId: validatedData.kycId,
+    userId: existingKyc.user_id,
+    previousStatus: existingKyc.status,
+    newStatus: validatedData.status,
+    reason: validatedData.reason || null,
+  },
+  user.email
+);
+```
+
+## Notification System
+
+### Approval Notification
+
+When KYC is approved:
+
+```typescript
+// app/actions/kyc-admin.ts:87-114
+if (validatedData.status === KycStatus.APPROVED) {
+  // Send approval email
+  await resend.emails.send({
+    from: `EventPalour <${env.EMAIL_FROM}>`,
+    to: [userInfo.email],
+    subject: "Your KYC Verification Has Been Approved",
+    react: React.createElement(KycApprovalEmail, {
+      userName,
+      userEmail: userInfo.email,
+      dashboardUrl,
+    }),
+  });
+
+  // Send in-app notification
+  await createNotification(userInfo.id, {
+    type: "success",
+    title: "KYC Verification Approved",
+    message: "Your KYC verification has been approved! You can now create paid events.",
+    metadata: {
+      type: "kyc_approved",
+      kycId: validatedData.kycId,
+      workspaceId: userWorkspace?.id,
+      link: "/workspace",
+    },
+  });
+}
+```
+
+### Rejection Notification
+
+When KYC is rejected:
+
+```typescript
+// app/actions/kyc-admin.ts:115-145
+else if (validatedData.status === KycStatus.REJECTED) {
+  const rejectionReason =
+    validatedData.reason ||
+    "Please review your application and provide the required information.";
+
+  await resend.emails.send({
+    from: `EventPalour <${env.EMAIL_FROM}>`,
+    to: [userInfo.email],
+    subject: "Your KYC Verification Requires Review",
+    react: React.createElement(KycRejectionEmail, {
+      userName,
+      userEmail: userInfo.email,
+      rejectionReason,
+      kycUrl,
+    }),
+  });
+
+  await createNotification(userInfo.id, {
+    type: "error",
+    title: "KYC Verification Rejected",
+    message: `Your KYC application was rejected. ${rejectionReason}`,
+    metadata: {
+      type: "kyc_rejected",
+      kycId: validatedData.kycId,
+      reason: rejectionReason,
+    },
+  });
+}
+```
+
+### Update Required Notification
+
+When updates are needed:
+
+```typescript
+// app/actions/kyc-admin.ts:146-177
+else if (validatedData.status === KycStatus.REQUIRES_UPDATE) {
+  const updateReason =
+    validatedData.reason ||
+    "Please review your application and provide the required information.";
+
+  await resend.emails.send({
+    from: `EventPalour <${env.EMAIL_FROM}>`,
+    to: [userInfo.email],
+    subject: "KYC Verification Update Required",
+    react: React.createElement(KycUpdateRequiredEmail, {
+      userName,
+      userEmail: userInfo.email,
+      updateReason,
+      kycUrl,
+    }),
+  });
+
+  await createNotification(userInfo.id, {
+    type: "warning",
+    title: "KYC Verification Update Required",
+    message: `Your KYC application needs updates. ${updateReason}`,
+  });
+}
+```
+
+## Common Rejection Reasons
+
+Standard rejection reasons displayed to admins:
+
+```typescript
+// app/admin/kyc/page.tsx:49-56
+<ul className="space-y-2 text-sm text-muted-foreground">
+  <li>• Document image is unclear or unreadable</li>
+  <li>• Information mismatch between documents</li>
+  <li>• Expired identification documents</li>
+  <li>• Missing required documents</li>
+  <li>• Fraudulent or tampered documents detected</li>
+</ul>
+```
+
+## KYC Metrics
+
+Track pending KYC applications:
+
+```typescript
+// dal/admin-metrics.ts:109-117
+const [pendingKycResult] = await db
+  .select({ count: count() })
+  .from(tables.kyc)
+  .where(eq(tables.kyc.status, KycStatus.PENDING));
+
+const pendingKyc = pendingKycResult?.count ?? 0;
+```
+
+This metric appears on the admin dashboard with a badge alert when applications are pending.
+
+## Review Checklist
+
+When reviewing KYC applications:
+
+1. **Verify Identity Documents**
+   - Check document is clear and readable
+   - Verify expiration date is valid
+   - Confirm name matches application
+
+2. **Validate Personal Information**
+   - Full name matches ID document
+   - Phone number is valid format
+   - Date of birth is reasonable
+
+3. **Check for Fraud Indicators**
+   - Document appears authentic (no tampering)
+   - Information is consistent across documents
+   - No signs of digital manipulation
+
+4. **Business Documentation** (if applicable)
+   - Business registration is valid
+   - Tax ID is properly formatted
+   - Business name matches registration
+
+## Best Practices
+
+1. **Timely Review**: Process applications within 24-48 hours
+2. **Clear Feedback**: Provide specific reasons for rejection or update requests
+3. **Documentation**: Log detailed notes in the audit trail
+4. **Consistency**: Apply the same verification standards to all applications
+5. **Privacy**: Handle personal information with care and confidentiality
+6. **Communication**: Use professional, helpful language in rejection messages
+
+## Related Documentation
+
+- [Admin Overview](/admin/overview)
+- [User Management](/admin/user-management)
+- [Audit Logs](/admin/audit-logs)
+- [Revenue Management](/admin/revenue-management)

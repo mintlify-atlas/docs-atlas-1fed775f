@@ -1,0 +1,275 @@
+---
+title: User Management
+description: Managing platform users, roles, and permissions in the admin panel
+---
+
+## Overview
+
+The User Management section provides comprehensive tools for viewing, searching, and managing all platform users. Administrators can view user details, manage account status, and monitor user activity.
+
+## Accessing User Management
+
+Navigate to `/admin/users` in the admin panel:
+
+```typescript
+// app/admin/users/page.tsx:4
+import { requireSuperAdmin } from "@/lib/auth/helpers/super-admin";
+import { getAllUsers } from "@/app/actions/admin-users";
+
+export default async function UsersManagementPage() {
+  const { user } = await requireSuperAdmin();
+  const usersData = await getAllUsers({ limit: 50, offset: 0 });
+}
+```
+
+## User Data Display
+
+The user management interface displays:
+
+- **User ID**: Unique identifier
+- **Email**: User's email address
+- **Username**: Display name
+- **Platform Role**: `organizer` or `attendee`
+- **Account Status**: Active, suspended, or blocked
+- **Created At**: Account creation timestamp
+- **Avatar**: Profile picture (if uploaded)
+
+## Platform Roles
+
+EventPalour has two primary platform roles:
+
+### Organizer Role
+
+```typescript
+// lib/db/schema/enums.ts:11-14
+export enum PlatformRole {
+  ORGANIZER = "organizer",
+  ATTENDEE = "attendee",
+}
+```
+
+Organizers can:
+- Create workspaces
+- Host events
+- Sell tickets
+- Apply for KYC verification
+- Access revenue dashboards
+
+### Attendee Role
+
+Attendees can:
+- Purchase tickets
+- RSVP to events
+- Join workspace channels
+- Participate in event discussions
+
+## User Search and Filtering
+
+The user management client component provides:
+
+- **Search**: Find users by email or username
+- **Role Filter**: Filter by organizer or attendee
+- **Status Filter**: View active, suspended, or blocked users
+- **Pagination**: Navigate through large user lists (50 users per page)
+
+## User Actions
+
+Administrators can perform various actions on user accounts:
+
+### View User Details
+
+Access comprehensive user information:
+- Account creation date
+- Last login timestamp
+- Associated workspaces
+- Event participation
+- Purchase history
+
+### Account Management
+
+While specific suspension/blocking actions are handled through the Security Management section, user management provides visibility into account status.
+
+## User Statistics
+
+The dashboard tracks user growth metrics:
+
+```typescript
+// dal/admin-metrics.ts:19-26
+// Total Users
+const [totalUsersResult] = await db
+  .select({ count: count() })
+  .from(tables.user);
+
+const totalUsers = totalUsersResult?.count ?? 0;
+```
+
+### Growth Tracking
+
+**New Users (24 hours)**
+```typescript
+// dal/admin-metrics.ts:89-97
+const [newUsers24hResult] = await db
+  .select({ count: count() })
+  .from(tables.user)
+  .where(gte(tables.user.created_at, last24Hours));
+```
+
+**New Users (7 days)**
+```typescript
+// dal/admin-metrics.ts:99-107
+const [newUsers7dResult] = await db
+  .select({ count: count() })
+  .from(tables.user)
+  .where(gte(tables.user.created_at, last7Days));
+```
+
+**Returning Users**
+```typescript
+// dal/admin-metrics.ts:79-87
+const returningUsers = await db
+  .selectDistinct({ userId: tables.session.user_id })
+  .from(tables.session)
+  .where(gte(tables.session.created_at, last30Days));
+
+const uniqueReturningUsers = new Set(returningUsers.map((r) => r.userId)).size;
+```
+
+## Organizer Tracking
+
+Monitor organizer accounts separately:
+
+```typescript
+// dal/admin-metrics.ts:28-36
+const [totalOrganizersResult] = await db
+  .select({ count: count() })
+  .from(tables.user)
+  .where(eq(tables.user.platform_role, PlatformRole.ORGANIZER));
+```
+
+### Paid Organizers
+
+Track KYC-approved organizers who can create paid events:
+
+```typescript
+// dal/admin-metrics.ts:38-46
+const [paidOrganizersResult] = await db
+  .select({ count: count() })
+  .from(tables.kyc)
+  .where(eq(tables.kyc.status, KycStatus.APPROVED));
+```
+
+## Audit Logging
+
+All user management actions are logged:
+
+```typescript
+// app/admin/users/page.tsx:54-60
+await logSuperAdminAccess(
+  adminUser.id,
+  "VIEWED_USER_MANAGEMENT",
+  undefined,
+  adminUser.email
+);
+```
+
+This creates an audit trail entry showing:
+- Which admin accessed user management
+- Timestamp of access
+- IP address and user agent
+- Result (success/failure)
+
+## Data Caching
+
+The user management page uses React Suspense for optimal performance:
+
+```typescript
+// app/admin/users/page.tsx:11-15
+async function StaticContent() {
+  "use cache";
+  cacheLife("minutes");
+  
+  // Static header and breadcrumbs cached
+}
+```
+
+Dynamic user data streams in separately, providing:
+- Fast initial page load
+- Fresh user data
+- Smooth loading experience
+
+## User Management Client
+
+The client component provides interactive features:
+
+```typescript
+// app/admin/users/page.tsx:64
+<UsersManagementClient initialUsers={usersData} />
+```
+
+Features include:
+- Real-time search
+- Client-side filtering
+- Sortable columns
+- Expandable user details
+- Action buttons for user operations
+
+## Common Use Cases
+
+### Finding a Specific User
+
+1. Navigate to `/admin/users`
+2. Use the search bar to enter email or username
+3. Results filter in real-time
+4. Click on user to view full details
+
+### Monitoring New Signups
+
+1. Check the dashboard for "New Users (24h)" metric
+2. Navigate to User Management
+3. Sort by "Created At" (newest first)
+4. Review recent registrations
+
+### Identifying Organizers
+
+1. Go to User Management
+2. Filter by Role: "Organizer"
+3. View all organizer accounts
+4. Check KYC status for each
+
+## Security Considerations
+
+### Access Control
+
+Only super admins can access user management:
+- Email must be in `SUPER_ADMIN_EMAILS` whitelist
+- Valid session required
+- All actions are audit logged
+
+### Data Privacy
+
+User management respects data privacy:
+- Sensitive data (passwords) never displayed
+- Payment information hidden
+- Personal data access logged for compliance
+
+### Rate Limiting
+
+User queries are paginated to prevent performance issues:
+- 50 users per page default
+- Efficient database queries
+- Indexed search fields
+
+## Best Practices
+
+1. **Regular Monitoring**: Review new user signups daily
+2. **Organizer Support**: Quickly identify organizers needing KYC approval
+3. **Security Review**: Watch for suspicious account patterns
+4. **Data Accuracy**: Verify user information when issues are reported
+5. **Audit Trail**: Document reasons for any account actions
+
+## Related Documentation
+
+- [Admin Overview](/admin/overview)
+- [KYC Approval](/admin/kyc-approval)
+- [Security Management](/admin/security)
+- [Audit Logs](/admin/audit-logs)

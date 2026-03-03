@@ -1,0 +1,429 @@
+---
+title: Security & Blocking
+description: Managing platform security, blocking users and IP addresses, and monitoring threats
+---
+
+## Overview
+
+The Security & Blocking section provides tools for managing platform security by blocking malicious users and IP addresses, monitoring security events, and protecting the platform from abuse.
+
+## Accessing Security Management
+
+Navigate to `/admin/security` to access security controls:
+
+```typescript
+// app/admin/security/page.tsx:61-73
+async function DynamicContent({ user: adminUser }: { user: User }) {
+  await logSuperAdminAccess(
+    adminUser.id,
+    "VIEWED_SECURITY_MANAGEMENT",
+    undefined,
+    adminUser.email
+  );
+
+  const [blockedUsers, blockedIPs] = await Promise.all([
+    getBlockedUsers(),
+    getBlockedIPs(),
+  ]);
+}
+```
+
+## Admin Authorization
+
+### Admin Levels
+
+EventPalour has four administrative levels with different permissions:
+
+```typescript
+// lib/db/schema/enums.ts:16-21
+export enum AdminLevel {
+  SUPER_ADMIN = "super_admin",    // Platform owners/administrators
+  SUPPORT = "support",            // Customer support team
+  FINANCE = "finance",            // Finance team for revenue management
+  MODERATOR = "moderator",        // Content moderation
+}
+```
+
+### Permission Schema
+
+```typescript
+// lib/db/schema/platform-admin.ts:6-12
+export type PlatformAdminPermissions = {
+  canManageAdmins?: boolean;
+  canManageUsers?: boolean;
+  canManageWorkspaces?: boolean;
+  canViewAuditLogs?: boolean;
+  canManageKYC?: boolean;
+};
+```
+
+### Platform Admin Table
+
+```typescript
+// lib/db/schema/platform-admin.ts:14-26
+export const platformAdmins = pgTable("platform_admins", {
+  id: varchar({ length: 16 }).primaryKey(),
+  userId: varchar({ length: 16 })
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  adminLevel: admin_level_enum().notNull().default(AdminLevel.SUPER_ADMIN),
+  permissions: jsonb().$type<PlatformAdminPermissions>(),
+  createdAt: timestamp({ mode: "date" }).notNull().defaultNow(),
+  updatedAt: timestamp({ mode: "date" }).notNull().defaultNow(),
+});
+```
+
+## Permission Checking
+
+### Checking Admin Status
+
+```typescript
+// lib/auth/helpers/platform-admin.ts:17-26
+export const isPlatformAdmin = cache(async (): Promise<boolean> => {
+  const user = await getUser();
+  if (!user) return false;
+
+  const admin = await db.query.platformAdmins.findFirst({
+    where: eq(platformAdmins.userId, user.id),
+  });
+
+  return !!admin;
+});
+```
+
+### Getting Admin Details
+
+```typescript
+// lib/auth/helpers/platform-admin.ts:31-38
+export const getPlatformAdmin = cache(async () => {
+  const user = await getUser();
+  if (!user) return null;
+
+  return await db.query.platformAdmins.findFirst({
+    where: eq(platformAdmins.userId, user.id),
+  });
+});
+```
+
+### Requiring Admin Access
+
+```typescript
+// lib/auth/helpers/platform-admin.ts:43-51
+export async function requirePlatformAdmin() {
+  const admin = await getPlatformAdmin();
+
+  if (!admin) {
+    redirect("/auth/sign-in");
+  }
+
+  return admin;
+}
+```
+
+### Checking Specific Permissions
+
+```typescript
+// lib/auth/helpers/platform-admin.ts:75-88
+export const hasAdminPermission = cache(
+  async (permission: keyof PlatformAdminPermissions): Promise<boolean> => {
+    const admin = await getPlatformAdmin();
+    if (!admin) return false;
+
+    // Super admins have all permissions
+    if (admin.adminLevel === AdminLevel.SUPER_ADMIN) {
+      return true;
+    }
+
+    // Check specific permission in the permissions object
+    return admin.permissions?.[permission] ?? false;
+  }
+);
+```
+
+### Requiring Permissions
+
+```typescript
+// lib/auth/helpers/platform-admin.ts:94-101
+export async function requireAdminPermission(
+  permission: keyof PlatformAdminPermissions,
+): Promise<void> {
+  const hasPermission = await hasAdminPermission(permission);
+  if (!hasPermission) {
+    redirect("/workspace/unauthorized");
+  }
+}
+```
+
+## Admin Level Hierarchy
+
+Admins are organized in a permission hierarchy:
+
+```typescript
+// lib/auth/helpers/platform-admin.ts:106-114
+export function getAdminLevelName(level: AdminLevel): string {
+  const names: Record<AdminLevel, string> = {
+    [AdminLevel.SUPER_ADMIN]: "Super Administrator",
+    [AdminLevel.SUPPORT]: "Support Team",
+    [AdminLevel.FINANCE]: "Finance Team",
+    [AdminLevel.MODERATOR]: "Content Moderator",
+  };
+  return names[level] ?? level;
+}
+```
+
+### Hierarchy Levels
+
+```typescript
+// lib/auth/helpers/platform-admin.ts:119-131
+export function hasAdminLevelOrHigher(
+  current: AdminLevel,
+  required: AdminLevel,
+): boolean {
+  const hierarchy = {
+    [AdminLevel.SUPER_ADMIN]: 4,
+    [AdminLevel.FINANCE]: 3,
+    [AdminLevel.SUPPORT]: 2,
+    [AdminLevel.MODERATOR]: 1,
+  };
+
+  return hierarchy[current] >= hierarchy[required];
+}
+```
+
+**Hierarchy Order** (highest to lowest):
+1. **Super Admin** (level 4) - Full platform access
+2. **Finance** (level 3) - Revenue and financial management
+3. **Support** (level 2) - User support and basic moderation
+4. **Moderator** (level 1) - Content moderation only
+
+## Super Admin Authentication
+
+Super admins are controlled via environment variables:
+
+### Email Whitelist
+
+```typescript
+// lib/utils/super-admin.ts:14-35
+export function getSuperAdminEmails(): string[] {
+  const emailsString = env.SUPER_ADMIN_EMAILS;
+
+  if (!emailsString || emailsString.trim() === "") {
+    return [];
+  }
+
+  const emails = emailsString
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter((email) => email.length > 0);
+
+  // Enforce maximum of 3 super admins
+  if (emails.length > 3) {
+    console.error(
+      "SECURITY WARNING: More than 3 super admin emails configured."
+    );
+    return emails.slice(0, 3);
+  }
+
+  return emails;
+}
+```
+
+**Security Limits**:
+- Maximum 3 super admin emails
+- Case-insensitive email matching
+- Comma-separated list in environment variable
+
+### Email Verification
+
+```typescript
+// lib/utils/super-admin.ts:40-47
+export function isSuperAdmin(userEmail: string | null | undefined): boolean {
+  if (!userEmail) return false;
+
+  const authorizedEmails = getSuperAdminEmails();
+  const normalizedEmail = userEmail.trim().toLowerCase();
+
+  return authorizedEmails.includes(normalizedEmail);
+}
+```
+
+### Route Access Secret
+
+Optional additional security layer:
+
+```typescript
+// lib/utils/super-admin.ts:53-62
+export function verifySuperAdminRouteAccess(token?: string): boolean {
+  const routeSecret = env.SUPER_ADMIN_ROUTE_SECRET;
+
+  // If no secret is configured, rely only on email verification
+  if (!routeSecret || routeSecret === "") {
+    return true;
+  }
+
+  return token === routeSecret;
+}
+```
+
+## Blocking Users
+
+The security management interface allows blocking malicious users:
+
+### Blocked Users Display
+
+```typescript
+// app/admin/security/page.tsx:75-79
+<SecurityManagementClient
+  initialBlockedUsers={blockedUsers}
+  initialBlockedIPs={blockedIPs}
+/>
+```
+
+Blocked users cannot:
+- Access their accounts
+- Create events or tickets
+- Make purchases
+- Interact with the platform
+
+## Blocking IP Addresses
+
+IP blocking prevents access from specific addresses:
+
+### IPv6 Support
+
+The system supports both IPv4 and IPv6:
+
+```typescript
+// lib/db/schema/admin-audit-log.ts:28
+ip_address: varchar("ip_address", { length: 45 }), // Supports IPv6
+```
+
+### IP Tracking
+
+All admin actions log IP addresses for security monitoring:
+
+```typescript
+// lib/utils/super-admin.ts:105
+ip_address: (metadata?.ip as string) || null,
+```
+
+## Security Event Monitoring
+
+The admin dashboard shows recent security events:
+
+```typescript
+// components/features/admin/admin-dashboard.tsx:376-407
+{security.recentEvents.length > 0 ? (
+  security.recentEvents.map((event) => (
+    <div key={event.id} className="flex items-start justify-between p-3 border rounded-lg">
+      <div className="flex-1 space-y-1">
+        <p className="text-sm font-medium">{event.action}</p>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {event.userEmail && <span>{event.userEmail}</span>}
+          {event.ipAddress && <span>• {event.ipAddress}</span>}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {format(new Date(event.timestamp), "MMM d, h:mm a")}
+        </p>
+      </div>
+      <Badge variant={event.result === "success" ? "default" : "destructive"}>
+        {event.result || "unknown"}
+      </Badge>
+    </div>
+  ))
+) : (
+  <p className="text-sm text-muted-foreground text-center py-4">
+    No security events in the last 24 hours
+  </p>
+)}
+```
+
+Displays:
+- Action performed
+- Admin email
+- IP address
+- Timestamp
+- Success/failure status
+
+## Security Best Practices
+
+### 1. Access Control
+
+- Limit super admin emails to 3 maximum
+- Use strong, unique passwords
+- Enable route secrets for additional protection
+- Regularly review admin access logs
+
+### 2. IP Blocking Strategy
+
+- Block IPs showing malicious patterns
+- Monitor for distributed attacks
+- Document reasons for IP blocks
+- Review blocked IPs periodically
+
+### 3. User Blocking Guidelines
+
+- Document violation reasons
+- Review before permanent blocks
+- Provide appeal mechanisms
+- Monitor for block evasion attempts
+
+### 4. Audit Trail Maintenance
+
+- All security actions are logged
+- Review logs daily for anomalies
+- Investigate failed security events
+- Export logs for compliance
+
+### 5. Permission Management
+
+- Follow principle of least privilege
+- Super admins only for critical operations
+- Use specific admin levels for delegation
+- Regular permission audits
+
+## Threat Detection
+
+Monitor for these security indicators:
+
+1. **Multiple Failed Login Attempts**
+   - Potential brute force attacks
+   - Account enumeration attempts
+
+2. **Unusual Access Patterns**
+   - Access from new geographic locations
+   - Off-hours administrative actions
+   - Rapid succession of high-privilege operations
+
+3. **Data Access Anomalies**
+   - Excessive user data queries
+   - Unusual export activities
+   - Pattern of accessing sensitive information
+
+4. **Payment Fraud Indicators**
+   - Multiple failed payments from same user
+   - Suspicious KYC document patterns
+   - Rapid account creation and payment attempts
+
+## Security Client Component
+
+The security management interface provides:
+
+```typescript
+// app/admin/security/page.tsx:9
+import { SecurityManagementClient } from "@/components/features/admin/security-management-client";
+```
+
+Features:
+- Block/unblock users
+- Add/remove IP blocks
+- View block history
+- Search blocked entities
+- Export block lists
+
+## Related Documentation
+
+- [Admin Overview](/admin/overview)
+- [Audit Logs](/admin/audit-logs)
+- [User Management](/admin/user-management)
+- [KYC Approval](/admin/kyc-approval)

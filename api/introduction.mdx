@@ -1,0 +1,222 @@
+---
+title: API introduction
+description: Learn how to interact with EventPalour's API using server actions and REST endpoints
+---
+
+## Overview
+
+EventPalour provides two primary ways to interact with the platform programmatically:
+
+1. **Server Actions** - Next.js server actions for server-side operations
+2. **REST API Endpoints** - Traditional REST endpoints for webhooks and integrations
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/api/authentication">
+    Learn about session-based authentication and authorization
+  </Card>
+  <Card title="Events" icon="calendar" href="/api/events">
+    Create and manage events programmatically
+  </Card>
+  <Card title="Tickets" icon="ticket" href="/api/tickets">
+    Handle ticket operations and purchases
+  </Card>
+  <Card title="Payments" icon="credit-card" href="/api/payments">
+    Process payments with Paystack integration
+  </Card>
+</CardGroup>
+
+## Architecture
+
+EventPalour uses a modern Next.js architecture with:
+
+- **Server Actions** - Type-safe server functions called from client components
+- **API Routes** - RESTful endpoints for external integrations
+- **Session-based Auth** - Secure authentication using sessions
+- **Role-based Access Control** - Platform, admin, and workspace roles
+
+## Server Actions vs API Routes
+
+### Server Actions
+
+Server actions are the primary way to interact with EventPalour from within the application. They provide:
+
+- Type safety with TypeScript
+- Automatic serialization
+- Built-in CSRF protection
+- Direct database access
+
+```typescript
+// Example: Creating an event using a server action
+import { createEvent } from '@/app/actions/events';
+
+const result = await createEvent({
+  title: 'Tech Conference 2024',
+  description: 'Annual technology conference',
+  workspaceId: 'workspace_id',
+  type: 'physical',
+  pricing: 'paid',
+  startDate: new Date('2024-06-01'),
+  endDate: new Date('2024-06-03'),
+});
+```
+
+### API Routes
+
+API routes are REST endpoints used for:
+
+- Webhook integrations (Paystack, OAuth)
+- File uploads
+- Email invitations
+- Admin operations
+
+```bash
+curl -X POST https://api.eventpalour.com/api/upload \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@event-image.jpg" \
+  -F "bucket=EVENTS" \
+  -F "folder=images"
+```
+
+## Base URL
+
+```
+Production: https://eventpalour.com
+Development: http://localhost:3000
+```
+
+## Rate Limiting
+
+API endpoints implement rate limiting to prevent abuse:
+
+- **POST requests**: Rate limited globally
+- **Limit**: Configurable per endpoint
+- **Response**: `429 Too Many Requests` with `Retry-After` header
+
+```typescript
+// Rate limiting implementation
+if (!(await globalPOSTRateLimit())) {
+  return new Response(
+    JSON.stringify({ error: "Too many requests. Please try again later." }),
+    {
+      status: 429,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": "60",
+      },
+    },
+  );
+}
+```
+
+## Data Formats
+
+### Request Format
+
+All requests should use JSON format unless uploading files:
+
+```json
+{
+  "title": "Event Title",
+  "description": "Event description",
+  "workspaceId": "abc123"
+}
+```
+
+### Response Format
+
+Successful responses return data directly:
+
+```json
+{
+  "id": "event_abc123",
+  "title": "Event Title",
+  "status": "active"
+}
+```
+
+Error responses include an error message:
+
+```json
+{
+  "error": "Authentication required"
+}
+```
+
+## Available Server Actions
+
+EventPalour provides server actions for:
+
+<AccordionGroup>
+  <Accordion title="Authentication & Authorization">
+    - `getCurrentUser()` - Get the current authenticated user
+    - `requireAuth()` - Require authentication or redirect
+    - `getUserWorkspaces()` - Get all workspaces for a user
+    - `requireRole()` - Require a specific platform role
+    - `validateWorkspaceAccess()` - Validate workspace access
+  </Accordion>
+  
+  <Accordion title="Events">
+    - `createEvent()` - Create a new event
+    - `updateEvent()` - Update event details
+    - `deleteEvent()` - Delete an event
+    - `getEventById()` - Get event details
+    - `getWorkspaceEvents()` - List workspace events
+  </Accordion>
+  
+  <Accordion title="Tickets">
+    - `bookTicket()` - Purchase a ticket
+    - `transferTicket()` - Transfer ticket to another user
+    - `scanTicket()` - Scan QR code at event
+    - `getUserTickets()` - Get user's tickets
+  </Accordion>
+  
+  <Accordion title="Payments">
+    - `initializePayment()` - Start payment flow
+    - `verifyPayment()` - Verify payment status
+    - `processRefund()` - Process a refund
+  </Accordion>
+  
+  <Accordion title="Workspaces">
+    - `createWorkspace()` - Create a new workspace
+    - `updateWorkspace()` - Update workspace settings
+    - `inviteMembers()` - Invite team members
+    - `updateMemberRole()` - Change member role
+  </Accordion>
+</AccordionGroup>
+
+## Available API Routes
+
+### Authentication
+- `GET /api/auth/check-super-admin` - Check super admin status
+- `GET /api/auth/oauth/google` - Google OAuth flow
+- `GET /api/auth/oauth/google/callback` - Google OAuth callback
+
+### File Management
+- `POST /api/upload` - Upload images and documents
+
+### Workspace
+- `POST /api/workspace/invite` - Send batch email invitations
+
+### Payments
+- `POST /api/payments/webhook/paystack` - Paystack webhook handler
+
+### Admin
+- `POST /api/admin/blue-tickets/approve` - Approve blue ticket
+- `POST /api/admin/blue-tickets/reject` - Reject blue ticket
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication Guide" icon="shield" href="/api/authentication">
+    Learn about authentication and session management
+  </Card>
+  <Card title="Events API" icon="calendar" href="/api/events">
+    Create and manage events
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/api/errors">
+    Handle errors and status codes
+  </Card>
+  <Card title="Workspaces API" icon="users" href="/api/workspaces">
+    Manage workspaces and teams
+  </Card>
+</CardGroup>

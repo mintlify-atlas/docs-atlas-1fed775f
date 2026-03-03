@@ -1,0 +1,511 @@
+---
+title: Speakers
+description: Manage event speakers with invitations, self-applications, and approval workflows
+---
+
+EventPalour provides comprehensive speaker management with support for both organizer-invited speakers and public speaker applications.
+
+## Speaker Types
+
+Speakers can join events through two methods:
+
+### Invited Speakers
+
+Organizers directly invite speakers to their events:
+
+- Organizer sends invitation with speaker details
+- Speaker status is set to pending by default
+- Can be approved immediately by the organizer
+- Full control over speaker information
+
+### Self-Applied Speakers
+
+Speakers can apply to speak at events:
+
+- Submit application through public form
+- Provide detailed information about their talk
+- Await organizer approval
+- Can include portfolio and social links
+
+## Inviting Speakers
+
+Organizers with Moderator role or higher can invite speakers:
+
+<Steps>
+  <Step title="Access Speaker Management">
+    Navigate to the speakers section in your workspace.
+  </Step>
+  
+  <Step title="Click Invite Speaker">
+    Start the invitation process.
+  </Step>
+  
+  <Step title="Enter Speaker Details">
+    Provide name, email, title, bio, and talk information.
+  </Step>
+  
+  <Step title="Add Social Links">
+    Include Twitter, LinkedIn, and Instagram profiles.
+  </Step>
+  
+  <Step title="Schedule Speaking Slot">
+    Optionally set the scheduled time for the speaker.
+  </Step>
+  
+  <Step title="Send Invitation">
+    Speaker is added to the event with pending status.
+  </Step>
+</Steps>
+
+```typescript /home/daytona/workspace/source/app/actions/speakers.ts:84-163
+export async function inviteSpeaker(
+  _prevState: unknown,
+  formData: FormData,
+): Promise<{ success: boolean; speakerId?: string; error?: string }> {
+  try {
+    const data = {
+      eventId: formData.get("eventId") as string,
+      name: formData.get("name") as string,
+      email: getOptionalValue(formData.get("email") as string),
+      title: getOptionalValue(formData.get("title") as string),
+      bio: getOptionalValue(formData.get("bio") as string),
+      talk: getOptionalValue(formData.get("talk") as string),
+      twitterHandle: getOptionalValue(formData.get("twitterHandle") as string),
+      linkedinUrl: getOptionalValue(formData.get("linkedinUrl") as string),
+      instagramHandle: getOptionalValue(
+        formData.get("instagramHandle") as string,
+      ),
+      scheduledTime: getOptionalValue(formData.get("scheduledTime") as string),
+    };
+
+    const validated = inviteSpeakerSchema.parse(data);
+
+    // Get event to check workspace access
+    const event = await getEventById(validated.eventId);
+    if (!event) {
+      return { success: false, error: "Event not found" };
+    }
+
+    // Validate workspace access
+    const { workspaceRole } = await validateWorkspaceAccess(event.workspace_id);
+
+    // Check if user has MODERATOR role or higher
+    if (roleHierarchy[workspaceRole] < roleHierarchy[WorkspaceRole.MODERATOR]) {
+      return {
+        success: false,
+        error: "You need at least Moderator permissions to invite speakers",
+      };
+    }
+
+    // Create speaker
+    const [speaker] = await db
+      .insert(tables.events_speakers)
+      .values({
+        event_id: validated.eventId,
+        name: validated.name,
+        email: validated.email || null,
+        title: validated.title || null,
+        bio: validated.bio || null,
+        talk: validated.talk || null,
+        twitter_handle: validated.twitterHandle || null,
+        linkedin_url: validated.linkedinUrl || null,
+        instagram_handle: validated.instagramHandle || null,
+        status: SpeakerStatus.PENDING,
+        submission_type: SpeakerSubmissionType.INVITED,
+        scheduled_time: validated.scheduledTime
+          ? new Date(validated.scheduledTime)
+          : null,
+        is_listed: true, // Invited speakers are listed by default
+      })
+      .returning();
+
+    return { success: true, speakerId: speaker.id };
+  }
+}
+```
+
+## Speaker Applications
+
+### Public Application Form
+
+Organizers can enable public speaker applications:
+
+<Steps>
+  <Step title="Create Application Link">
+    Generate a unique application link for the event.
+  </Step>
+  
+  <Step title="Share Link">
+    Distribute the link through social media, event pages, etc.
+  </Step>
+  
+  <Step title="Speakers Apply">
+    Speakers fill out the application form.
+  </Step>
+  
+  <Step title="Review Applications">
+    Organizers review and approve/reject applications.
+  </Step>
+</Steps>
+
+### Application Workflow
+
+```typescript /home/daytona/workspace/source/app/actions/speakers.ts:168-343
+export async function applyAsSpeaker(
+  _prevState: unknown,
+  formData: FormData,
+): Promise<{ success: boolean; speakerId?: string; error?: string }> {
+  try {
+    const data = {
+      eventId: formData.get("eventId") as string,
+      linkToken: getOptionalValue("linkToken"),
+      name: formData.get("name") as string,
+      email: formData.get("email") as string,
+      title: formData.get("title") as string,
+      talk: formData.get("talk") as string,
+      bio: formData.get("bio") as string,
+      yearsOfExperience: getOptionalValue("yearsOfExperience"),
+      twitterHandle: getOptionalValue("twitterHandle"),
+      linkedinUrl: getOptionalValue("linkedinUrl"),
+      instagramHandle: getOptionalValue("instagramHandle"),
+    };
+
+    const validated = applyAsSpeakerSchema.parse(data);
+
+    // Verify event exists
+    const event = await getEventById(validated.eventId);
+    if (!event) {
+      return { success: false, error: "Event not found" };
+    }
+
+    // If linkToken is provided, validate the application link
+    if (validated.linkToken) {
+      const link = await db.query.speaker_application_links.findFirst({
+        where: eq(
+          tables.speaker_application_links.link_token,
+          validated.linkToken,
+        ),
+      });
+
+      if (!link) {
+        return { success: false, error: "Invalid application link" };
+      }
+
+      if (!link.is_active) {
+        return {
+          success: false,
+          error: "This application link has been revoked",
+        };
+      }
+
+      if (link.expires_at && new Date(link.expires_at) < new Date()) {
+        return { success: false, error: "This application link has expired" };
+      }
+
+      if (
+        link.max_applications &&
+        link.current_applications >= link.max_applications
+      ) {
+        return {
+          success: false,
+          error: "Maximum number of applications reached",
+        };
+      }
+    }
+
+    // Handle image upload if provided
+    let imageUrl: string | null = null;
+    const imageFile = formData.get("image") as File | null;
+    if (imageFile && imageFile.size > 0) {
+      const { uploadImage } = await import("@/lib/storage/supabase");
+      const uploadResult = await uploadImage(
+        imageFile,
+        "SPEAKERS",
+        "profile-images",
+      );
+      if (uploadResult.success && uploadResult.url) {
+        imageUrl = uploadResult.url;
+      }
+    }
+
+    // Create speaker application
+    const [speaker] = await db
+      .insert(tables.events_speakers)
+      .values({
+        event_id: validated.eventId,
+        name: validated.name,
+        email: validated.email,
+        title: validated.title,
+        talk: validated.talk,
+        bio: validated.bio,
+        image_url: imageUrl,
+        twitter_handle: validated.twitterHandle || null,
+        linkedin_url: validated.linkedinUrl || null,
+        instagram_handle: validated.instagramHandle || null,
+        status: SpeakerStatus.PENDING,
+        submission_type: SpeakerSubmissionType.SELF_APPLIED,
+        is_listed: false, // Not listed until approved
+      })
+      .returning();
+
+    return { success: true, speakerId: speaker.id };
+  }
+}
+```
+
+## Speaker Status
+
+Speakers can have the following statuses:
+
+- **Pending**: Awaiting organizer approval
+- **Approved**: Confirmed to speak at the event
+- **Rejected**: Application was declined
+- **Cancelled**: Speaker cancelled their participation
+
+### Approving Speakers
+
+```typescript /home/daytona/workspace/source/app/actions/speakers.ts:467-527
+export async function updateSpeakerStatus(
+  speakerId: string,
+  status: SpeakerStatus,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const validated = updateSpeakerStatusSchema.parse({ speakerId, status });
+
+    // Get speaker with event info
+    const speaker = await db.query.events_speakers.findFirst({
+      where: eq(tables.events_speakers.id, validated.speakerId),
+    });
+
+    if (!speaker) {
+      return { success: false, error: "Speaker not found" };
+    }
+
+    // Get event to check workspace access
+    const event = await getEventById(speaker.event_id);
+    if (!event) {
+      return { success: false, error: "Event not found" };
+    }
+
+    // Validate workspace access
+    const { workspaceRole } = await validateWorkspaceAccess(event.workspace_id);
+
+    // Check if user has MODERATOR role or higher
+    if (roleHierarchy[workspaceRole] < roleHierarchy[WorkspaceRole.MODERATOR]) {
+      return {
+        success: false,
+        error:
+          "You need at least Moderator permissions to update speaker status",
+      };
+    }
+
+    // Update speaker status
+    await db
+      .update(tables.events_speakers)
+      .set({
+        status: validated.status,
+        updated_at: new Date(),
+      })
+      .where(eq(tables.events_speakers.id, validated.speakerId));
+
+    return { success: true };
+  }
+}
+```
+
+## Speaker Schema
+
+```typescript /home/daytona/workspace/source/lib/db/schema/events.ts:91-122
+export const events_speakers = pgTable("events_speakers", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  event_id: varchar("event_id", { length: 16 })
+    .notNull()
+    .references(() => events.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }),
+  title: varchar("title", { length: 255 }), // Speaker title
+  talk: text("talk"), // Topic/talk title
+  bio: text("bio"), // Brief biography
+  image_url: text("image_url"), // Profile image
+  twitter_handle: varchar("twitter_handle", { length: 255 }),
+  linkedin_url: text("linkedin_url"),
+  instagram_handle: varchar("instagram_handle", { length: 255 }),
+  status: speaker_status_enum("status")
+    .notNull()
+    .default(SpeakerStatus.PENDING),
+  submission_type: speaker_submission_type_enum("submission_type")
+    .notNull()
+    .default(SpeakerSubmissionType.SELF_APPLIED),
+  scheduled_time: timestamp("scheduled_time", { withTimezone: true }),
+  is_listed: boolean("is_listed").notNull().default(true),
+});
+```
+
+## Application Links
+
+Create shareable links for speaker applications:
+
+```typescript /home/daytona/workspace/source/lib/db/schema/events.ts:124-144
+export const speaker_application_links = pgTable("speaker_application_links", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  event_id: varchar("event_id", { length: 16 })
+    .notNull()
+    .references(() => events.id, { onDelete: "cascade" }),
+  link_token: varchar("link_token", { length: 64 }).notNull().unique(),
+  is_active: boolean("is_active").notNull().default(true),
+  expires_at: timestamp("expires_at", { withTimezone: true }),
+  max_applications: integer("max_applications"),
+  current_applications: integer("current_applications").notNull().default(0),
+  created_at: timestamp("created_at").notNull().defaultNow(),
+  updated_at: timestamp("updated_at").notNull().defaultNow(),
+});
+```
+
+### Application Link Features
+
+- **Unique Tokens**: Each link has a unique token for tracking
+- **Expiration**: Set optional expiration dates
+- **Application Limits**: Restrict number of applications
+- **Active/Inactive**: Enable or disable links anytime
+- **Application Tracking**: Monitor submission counts
+
+## Managing Speakers
+
+### Update Speaker Information
+
+```typescript /home/daytona/workspace/source/app/actions/speakers.ts:348-461
+export async function updateSpeaker(
+  _prevState: unknown,
+  formData: FormData,
+): Promise<{ success: boolean; error?: string }> {
+  // Build update object
+  const updateData: Record<string, unknown> = {
+    updated_at: new Date(),
+  };
+
+  if (validated.name !== undefined) updateData.name = validated.name;
+  if (validated.email !== undefined) updateData.email = validated.email || null;
+  if (validated.title !== undefined) updateData.title = validated.title || null;
+  if (validated.bio !== undefined) updateData.bio = validated.bio || null;
+  if (validated.scheduledTime !== undefined) {
+    updateData.scheduled_time = validated.scheduledTime
+      ? new Date(validated.scheduledTime)
+      : null;
+  }
+  if (validated.isListed !== undefined) {
+    updateData.is_listed = validated.isListed;
+  }
+
+  // Update speaker
+  await db
+    .update(tables.events_speakers)
+    .set(updateData)
+    .where(eq(tables.events_speakers.id, validated.speakerId));
+
+  return { success: true };
+}
+```
+
+### Delete Speakers
+
+```typescript /home/daytona/workspace/source/app/actions/speakers.ts:532-579
+export async function deleteSpeaker(
+  speakerId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const speaker = await db.query.events_speakers.findFirst({
+      where: eq(tables.events_speakers.id, speakerId),
+    });
+
+    if (!speaker) {
+      return { success: false, error: "Speaker not found" };
+    }
+
+    // Get event to check workspace access
+    const event = await getEventById(speaker.event_id);
+    if (!event) {
+      return { success: false, error: "Event not found" };
+    }
+
+    // Validate workspace access
+    const { workspaceRole } = await validateWorkspaceAccess(event.workspace_id);
+
+    // Check if user has MODERATOR role or higher
+    if (roleHierarchy[workspaceRole] < roleHierarchy[WorkspaceRole.MODERATOR]) {
+      return {
+        success: false,
+        error: "You need at least Moderator permissions to delete speakers",
+      };
+    }
+
+    // Delete speaker (cascade will handle images)
+    await db
+      .delete(tables.events_speakers)
+      .where(eq(tables.events_speakers.id, speakerId));
+
+    return { success: true };
+  }
+}
+```
+
+## Displaying Speakers
+
+Retrieve approved speakers for public display:
+
+```typescript /home/daytona/workspace/source/dal/speakers.ts:42-44
+export const getApprovedEventSpeakers = cache(async (eventId: string) => {
+  return getEventSpeakers(eventId, SpeakerStatus.APPROVED);
+});
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Detailed Bios" icon="user">
+    Encourage speakers to provide comprehensive bios and credentials.
+  </Card>
+  
+  <Card title="High-Quality Photos" icon="image">
+    Request professional headshots for better presentation.
+  </Card>
+  
+  <Card title="Talk Descriptions" icon="message">
+    Ensure speakers provide clear descriptions of their talks.
+  </Card>
+  
+  <Card title="Scheduled Times" icon="clock">
+    Set specific time slots for each speaker's presentation.
+  </Card>
+</CardGroup>
+
+## Workflow Example
+
+<Steps>
+  <Step title="Create Application Link">
+    Generate a unique link for speaker applications.
+  </Step>
+  
+  <Step title="Share on Social Media">
+    Promote the application link to attract speakers.
+  </Step>
+  
+  <Step title="Review Applications">
+    Review submissions in the speakers dashboard.
+  </Step>
+  
+  <Step title="Approve Best Speakers">
+    Select and approve speakers that fit your event.
+  </Step>
+  
+  <Step title="Schedule Speaking Slots">
+    Assign time slots to approved speakers.
+  </Step>
+  
+  <Step title="Display on Event Page">
+    Approved speakers appear on the public event page.
+  </Step>
+</Steps>
+
+<Note>
+  Only approved speakers with `is_listed: true` will be displayed on the public event page.
+</Note>

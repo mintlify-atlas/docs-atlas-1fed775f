@@ -1,0 +1,445 @@
+---
+title: Ticket Types
+description: Configure ticket types, pricing, availability, and validity periods for your events
+---
+
+Ticket types allow you to offer different pricing tiers and access levels for your paid events. This guide covers everything you need to know about configuring tickets.
+
+## Overview
+
+Each ticket type represents a unique offering with its own:
+
+- **Name**: Identifies the ticket tier (e.g., "Early Bird", "VIP")
+- **Price**: Cost in selected currency
+- **Currency**: Currently KES (Kenyan Shilling)
+- **Availability**: Number of tickets available (optional)
+- **Valid From**: When tickets become available for purchase (optional)
+- **Valid Until**: When ticket sales end (optional)
+
+## Creating Ticket Types
+
+Ticket types are configured during event creation (Step 4) or can be added later from the event management page.
+
+<Steps>
+  <Step title="Access Ticket Configuration">
+    During event creation:
+    - Navigate to Step 4 (Tickets)
+    - This step appears only for **Paid** events
+
+    For existing events:
+    - Go to Manage Events
+    - Click on your event
+    - Navigate to Tickets section
+  </Step>
+
+  <Step title="Add Ticket Type">
+    Click "Add Ticket Type" button to create a new tier.
+
+    Fill in the required fields:
+
+    ### Ticket Name
+    Choose a descriptive name:
+    ```
+    Examples:
+    - "Early Bird Special"
+    - "VIP Pass"
+    - "Standard Admission"
+    - "Student Discount"
+    - "Group Package (5 people)"
+    ```
+
+    ### Price
+    Enter the ticket price:
+    - Numeric value only
+    - Example: `1500` for KES 1,500
+    - Can be `0` for free tier within paid event
+
+    ### Currency
+    Select currency:
+    - **KES** (Kenyan Shilling) - Currently supported
+    - More currencies coming soon
+
+    ### Quantity (Optional)
+    Set maximum tickets available:
+    - Leave empty for **unlimited** tickets
+    - Enter a number for **limited** availability
+    - Example: `50` for limited VIP tickets
+
+    When quantity is set:
+    - Tickets are sold first-come, first-served
+    - Status shows "Sold Out" when limit is reached
+    - Creates urgency for potential attendees
+  </Step>
+
+  <Step title="Configure Validity Period (Optional)">
+    Set when tickets can be purchased:
+
+    ### Valid From
+    Tickets become available at this date/time:
+    ```
+    Example: 2026-01-01 00:00:00
+    ```
+    - Use for timed releases (e.g., early bird tickets)
+    - Leave empty for immediate availability
+
+    ### Valid Until
+    Ticket sales end at this date/time:
+    ```
+    Example: 2026-02-15 23:59:59
+    ```
+    - Useful for early bird deadlines
+    - Typically set before event start date
+    - Leave empty to sell until event starts
+
+    <Note>
+      Validity periods are enforced at purchase time. Tickets outside their validity window are hidden from the ticket selection page.
+    </Note>
+  </Step>
+
+  <Step title="Save Ticket Type">
+    Review your configuration and save.
+
+    The ticket type is now:
+    - Available for purchase (if within validity period)
+    - Visible on the event page
+    - Tracked for inventory (if quantity is set)
+  </Step>
+</Steps>
+
+## Ticket Type Strategies
+
+### Early Bird Tickets
+
+Reward early registrations with discounted pricing:
+
+```yaml
+Ticket Name: "Early Bird"
+Price: 1000
+Quantity: 100
+Valid From: [Immediate]
+Valid Until: 30 days before event
+```
+
+**Benefits:**
+- Generates early revenue
+- Creates urgency
+- Rewards loyal followers
+- Helps gauge interest early
+
+**Best Practices:**
+- Discount 20-30% off standard price
+- Set clear deadline (e.g., "Until Feb 1" or "First 100 tickets")
+- Promote heavily on announcement
+- Limited quantity increases urgency
+
+### VIP or Premium Tickets
+
+Offer enhanced experiences at higher price points:
+
+```yaml
+Ticket Name: "VIP All-Access Pass"
+Price: 5000
+Quantity: 20
+Valid From: [Immediate]
+Valid Until: [Until event starts]
+```
+
+**VIP Benefits to Include:**
+- Front-row seating
+- Meet & greet with speakers
+- Exclusive networking session
+- Premium swag bag
+- Priority access
+- Dedicated support
+
+**Pricing Strategy:**
+- 2-3x standard ticket price
+- Limited quantity for exclusivity
+- Clearly communicate added value
+- Mention VIP perks in ticket description
+
+### Standard Tickets
+
+Your main ticket offering:
+
+```yaml
+Ticket Name: "Standard Admission"
+Price: 1500
+Quantity: [Unlimited]
+Valid From: [Immediate]
+Valid Until: [Until event starts]
+```
+
+**Characteristics:**
+- Base pricing tier
+- Typically unlimited quantity
+- Available throughout sales period
+- Most attendees purchase this tier
+
+### Student/Discount Tickets
+
+Make events accessible to budget-conscious attendees:
+
+```yaml
+Ticket Name: "Student Discount"
+Price: 750
+Quantity: 50
+Valid From: [Immediate]
+Valid Until: [Until event starts]
+```
+
+**Implementation:**
+- 40-50% off standard price
+- May require verification at check-in
+- Limited quantity
+- Mention verification requirement in description
+
+### Group Tickets
+
+Encourage team registrations:
+
+```yaml
+Ticket Name: "Team Package (5 tickets)"
+Price: 6000
+Quantity: 10
+Valid From: [Immediate]
+Valid Until: [Until event starts]
+```
+
+**Pricing:**
+- 15-20% discount per person vs individual tickets
+- Specify number of people included
+- Collect all attendee details at checkout
+
+### Last Minute Tickets
+
+Fill remaining capacity close to event date:
+
+```yaml
+Ticket Name: "Last Chance"
+Price: 2000
+Quantity: [Remaining capacity]
+Valid From: 7 days before event
+Valid Until: [Until event starts]
+```
+
+**Strategy:**
+- Slightly higher than standard price
+- Creates urgency
+- Captures last-minute decision makers
+- Activates only in final days
+
+## Ticket Availability
+
+### Setting Quantities
+
+When you set a quantity limit:
+
+```typescript
+availability_quantity: 100
+```
+
+The system tracks:
+- **Total quantity**: Maximum tickets available
+- **Sold tickets**: Number purchased
+- **Remaining**: Total - Sold
+
+### Unlimited Tickets
+
+For unlimited availability:
+
+```typescript
+availability_quantity: null
+```
+
+- No quantity restrictions
+- Never shows "Sold Out"
+- Suitable for virtual events
+- Can be changed to limited later
+
+### Real-Time Inventory
+
+Ticket availability is updated in real-time:
+
+1. Attendee adds ticket to cart
+2. Ticket is **reserved** temporarily (5-15 minutes)
+3. Upon successful payment, ticket is marked **sold**
+4. If payment fails or times out, ticket returns to available pool
+
+This prevents overselling while allowing recovery from abandoned checkouts.
+
+## Validity Periods
+
+### Configuration Examples
+
+**Early Bird (Timed Release)**
+```typescript
+valid_from: "2026-01-01T00:00:00Z"
+valid_until: "2026-02-01T23:59:59Z"
+```
+Available only in January 2026.
+
+**Standard (Always Available)**
+```typescript
+valid_from: null
+valid_until: null
+```
+Available from event creation until event starts.
+
+**Last Minute (Final Week)**
+```typescript
+valid_from: "2026-03-01T00:00:00Z"
+valid_until: "2026-03-08T09:00:00Z"
+```
+Event on March 8, tickets available only in final week.
+
+### How Validity Works
+
+The system checks validity at:
+- **Display time**: Only valid tickets shown on event page
+- **Purchase time**: Validates ticket is still valid
+- **Checkout**: Final validation before payment
+
+If a ticket becomes invalid during checkout, the user is notified to select a different ticket.
+
+## Managing Sold Tickets
+
+### Viewing Sales
+
+From your event management dashboard:
+
+1. Navigate to **Manage Events**
+2. Select your event
+3. View **Tickets** section
+
+You'll see:
+- Ticket type name
+- Price and currency
+- Total quantity (if limited)
+- Sold count
+- Revenue generated
+
+### Editing Ticket Types
+
+You can modify ticket types after creation:
+
+**Safe to Change:**
+- Ticket name
+- Quantity (increase only recommended)
+- Valid until date (extend only)
+
+**Caution Required:**
+- Price changes affect new purchases only (existing tickets unchanged)
+- Reducing quantity below sold count not allowed
+- Shortening validity period may confuse users
+
+**Cannot Change:**
+- Already-purchased tickets
+- Currency after sales begin
+
+<Warning>
+  Avoid reducing ticket prices significantly after initial sales. This can frustrate early buyers. Consider creating a new discounted tier instead.
+</Warning>
+
+## Multiple Currency Support
+
+Currently, EventPalour supports:
+
+- **KES** (Kenyan Shilling)
+
+Upcoming:
+- **USD** (US Dollar)
+- More currencies based on demand
+
+All transactions for an event must use the same currency.
+
+## Ticket Pricing Best Practices
+
+<AccordionGroup>
+  <Accordion title="Research Competitive Pricing">
+    Before setting prices:
+    - Research similar events in your area
+    - Check competitor ticket prices
+    - Consider your audience's budget
+    - Factor in your costs (venue, speakers, catering)
+    - Include platform fees in calculations
+  </Accordion>
+
+  <Accordion title="Create Price Anchoring">
+    Use psychology to guide purchases:
+    - List VIP first (sets high anchor)
+    - Show savings on early bird ("Save KES 500")
+    - Display "Most Popular" tag on standard tickets
+    - Use odd pricing (KES 1,499 vs KES 1,500)
+  </Accordion>
+
+  <Accordion title="Incentivize Early Purchases">
+    Reward early commitment:
+    - Launch with early bird pricing
+    - Increase prices in tiers over time
+    - Set quantity limits on discounts
+    - Communicate price increases clearly
+  </Accordion>
+
+  <Accordion title="Communicate Value Clearly">
+    Help attendees understand pricing:
+    - List what's included in each tier
+    - Compare tiers side-by-side
+    - Highlight VIP exclusives
+    - Mention speakers, meals, materials included
+  </Accordion>
+</AccordionGroup>
+
+## Ticket Revenue & Payouts
+
+Understanding the flow:
+
+1. **Purchase**: Attendee pays through Paystack
+2. **Processing**: Payment held by Paystack
+3. **Settlement**: Funds transferred to your account (T+2 days typically)
+4. **Fees**: Platform and payment processor fees deducted
+
+For detailed payout information, see your workspace billing section.
+
+## Common Questions
+
+**Can I create free tickets for a paid event?**
+
+Yes, set the price to `0` for a free tier within your paid event. Useful for:
+- Speaker/sponsor complimentary tickets
+- Media passes
+- Volunteer access
+
+**What happens when tickets sell out?**
+
+When a ticket type reaches its quantity limit:
+- Status changes to "Sold Out"
+- No longer selectable on event page
+- Other ticket types remain available
+- Consider adding a waitlist
+
+**Can I add tickets after the event is created?**
+
+Yes, navigate to your event in Manage Events and add new ticket types anytime before the event starts.
+
+**How do I handle refunds?**
+
+Refunds are processed through the attendee management interface:
+1. Go to Manage Events → Select Event → Attendees
+2. Find the attendee's ticket
+3. Click "Refund" and confirm
+4. Funds return to attendee's payment method in 5-10 business days
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Pricing Strategies" icon="chart-line" href="/organizers/pricing-strategies">
+    Learn advanced pricing tactics to maximize revenue
+  </Card>
+  <Card title="Attendee Management" icon="users" href="/organizers/attendee-management">
+    Track and manage ticket purchases and registrations
+  </Card>
+  <Card title="Creating Events" icon="calendar" href="/organizers/creating-events">
+    Go back to the complete event creation guide
+  </Card>
+</CardGroup>

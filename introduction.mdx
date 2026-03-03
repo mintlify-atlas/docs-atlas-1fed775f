@@ -1,0 +1,202 @@
+---
+title: Welcome to EventPalour
+description: A powerful SaaS platform for managing events, selling tickets, and engaging attendees
+---
+
+## What is EventPalour?
+
+EventPalour is a comprehensive event management platform built for event organizers and attendees. Whether you're hosting a small meetup or a large conference, EventPalour provides all the tools you need to create, manage, and monetize your events.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get up and running in minutes with our step-by-step guide
+  </Card>
+  <Card title="Installation" icon="code" href="/installation">
+    Set up your local development environment
+  </Card>
+  <Card title="API Reference" icon="book" href="/api-reference">
+    Explore our comprehensive API documentation
+  </Card>
+  <Card title="Authentication" icon="shield" href="/authentication">
+    Learn about OAuth, 2FA, and security features
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Multi-Workspace Management
+
+Organize your events across multiple workspaces. Each workspace can have its own team, branding, and settings.
+
+```typescript
+// Workspace schema from lib/db/schema/workspace.ts
+export const workspace = pgTable("workspace", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  website: varchar("website", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  social_x: varchar("social_x", { length: 255 }),
+  social_facebook: varchar("social_facebook", { length: 255 }),
+  social_linkedin: varchar("social_linkedin", { length: 255 }),
+  image_url: text("image_url").notNull(),
+  invite_code: text("invite_code").notNull().unique(),
+  user_id: varchar("user_id", { length: 16 })
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+});
+```
+
+### Event Types & Flexibility
+
+Support for physical, online, and hybrid events with comprehensive ticketing options.
+
+```typescript
+// Event types from lib/db/schema/enums.ts
+export enum EventType {
+  PHYSICAL = "physical",
+  ONLINE = "online",
+  HYBRID = "hybrid"
+}
+
+export enum EventPricing {
+  FREE = "free",
+  PAID = "paid"
+}
+```
+
+### Secure Authentication
+
+Built-in support for OAuth (Google, GitHub), email/password authentication, and two-factor authentication.
+
+```typescript
+// User authentication schema from lib/db/schema/user.ts
+export const user = pgTable("user", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  username: varchar("username", { length: 255 }).notNull(),
+  password: text("password"),
+  email_verified: boolean("email_verified").notNull().default(false),
+  registered_2fa: boolean("registered_2fa").notNull().default(false),
+});
+```
+
+### Payment Integration
+
+Integrated with Paystack for secure payment processing and ticket sales.
+
+<Info>
+Paid events require KYC verification to ensure compliance and protect both organizers and attendees.
+</Info>
+
+### Advanced Ticketing
+
+Create multiple ticket types with flexible pricing, availability windows, and currency support.
+
+```typescript
+// Ticket schema from lib/db/schema/tickets.ts
+export const tickets = pgTable("tickets", {
+  id: varchar("id", { length: 16 }).primaryKey(),
+  event_id: varchar("event_id", { length: 16 }).notNull(),
+  ticket_type_id: varchar("ticket_type_id", { length: 16 }).notNull(),
+  price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+  availability_quantity: integer("availability"), // NULL = unlimited
+  currency: currency_enum("currency").notNull().default(CurrencyEnum.KES),
+  valid_from: timestamp("valid_from", { withTimezone: true }),
+  valid_until: timestamp("valid_until", { withTimezone: true }),
+});
+```
+
+## Technology Stack
+
+<CardGroup cols={3}>
+  <Card title="Next.js 16" icon="react">
+    Built with the latest Next.js features including App Router and Server Actions
+  </Card>
+  <Card title="TypeScript" icon="code">
+    Fully typed for better developer experience and code safety
+  </Card>
+  <Card title="Drizzle ORM" icon="database">
+    Type-safe database queries with PostgreSQL
+  </Card>
+  <Card title="Paystack" icon="credit-card">
+    Secure payment processing for paid events
+  </Card>
+  <Card title="OAuth 2.0" icon="key">
+    Google and GitHub authentication support
+  </Card>
+  <Card title="Tailwind CSS" icon="palette">
+    Modern, responsive UI design
+  </Card>
+</CardGroup>
+
+## Use Cases
+
+### For Event Organizers
+
+- Create and manage multiple events across different workspaces
+- Sell tickets with flexible pricing tiers (Early Bird, VIP, Standard)
+- Track attendees and manage check-ins
+- Send announcements and updates to attendees
+- Manage speakers and event partners
+- View analytics and reports
+
+### For Attendees
+
+- Discover events near you
+- Purchase tickets securely
+- Receive event updates and notifications
+- Access virtual event links
+- View event details, speakers, and schedule
+
+## Architecture Overview
+
+EventPalour follows a modern SaaS architecture:
+
+<Steps>
+  <Step title="Database Layer">
+    PostgreSQL database with Drizzle ORM for type-safe queries
+  </Step>
+  <Step title="Backend Layer">
+    Next.js Server Actions and API routes for business logic
+  </Step>
+  <Step title="Authentication Layer">
+    Session-based auth with OAuth support and 2FA
+  </Step>
+  <Step title="Frontend Layer">
+    React Server Components with optimized client components
+  </Step>
+  <Step title="Payment Layer">
+    Paystack integration for secure transactions
+  </Step>
+</Steps>
+
+## Getting Help
+
+Need assistance? Here are some resources:
+
+<CardGroup cols={2}>
+  <Card title="Documentation" icon="book">
+    Browse our comprehensive guides and API references
+  </Card>
+  <Card title="GitHub Issues" icon="github">
+    Report bugs or request features
+  </Card>
+  <Card title="Community" icon="users">
+    Join our community discussions
+  </Card>
+  <Card title="Support" icon="life-ring">
+    Contact our support team
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Create your first event in under 5 minutes
+  </Card>
+  <Card title="Local Setup" icon="laptop" href="/installation">
+    Set up the development environment
+  </Card>
+</CardGroup>

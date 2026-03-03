@@ -1,0 +1,525 @@
+---
+title: Events API
+description: Create, update, and manage events programmatically
+---
+
+## Overview
+
+The Events API allows you to create and manage events within workspaces. Events are the core entity in EventPalour and support various types, pricing models, and ticketing options.
+
+## Create Event
+
+Create a new event in a workspace.
+
+```typescript
+import { createEvent } from '@/app/actions/events';
+import { EventType, EventPricing } from '@/lib/db/schema/enums';
+
+const result = await createEvent({
+  title: 'Tech Conference 2024',
+  description: '<p>Join us for an amazing tech conference...</p>',
+  workspaceId: 'workspace_id',
+  type: EventType.PHYSICAL,
+  pricing: EventPricing.PAID,
+  venue: 'Convention Center',
+  country: 'Kenya',
+  city: 'Nairobi',
+  startDate: new Date('2024-06-01T09:00:00'),
+  endDate: new Date('2024-06-03T18:00:00'),
+  category: 'Technology',
+  eventImageUrl: 'https://storage.example.com/event-image.jpg',
+});
+```
+
+### Parameters
+
+<ParamField path="title" type="string" required>
+  Event title (1-255 characters)
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Event description in HTML format (10-5000 characters of plain text)
+</ParamField>
+
+<ParamField path="workspaceId" type="string" required>
+  ID of the workspace creating the event
+</ParamField>
+
+<ParamField path="type" type="EventType" required>
+  Event type: `physical`, `online`, or `hybrid`
+</ParamField>
+
+<ParamField path="pricing" type="EventPricing" required>
+  Pricing model: `free` or `paid`
+</ParamField>
+
+<ParamField path="startDate" type="Date" required>
+  Event start date and time
+</ParamField>
+
+<ParamField path="endDate" type="Date" required>
+  Event end date and time (must be after startDate)
+</ParamField>
+
+<ParamField path="venue" type="string">
+  Physical venue name (required for physical and hybrid events)
+</ParamField>
+
+<ParamField path="country" type="string">
+  Country where event takes place
+</ParamField>
+
+<ParamField path="city" type="string">
+  City where event takes place
+</ParamField>
+
+<ParamField path="category" type="string">
+  Event category name (auto-creates if doesn't exist)
+</ParamField>
+
+<ParamField path="customCategory" type="string">
+  Custom category name to create
+</ParamField>
+
+<ParamField path="categoryId" type="string">
+  Existing category ID
+</ParamField>
+
+<ParamField path="meetingPlatform" type="string">
+  Online meeting platform: `google-meet`, `zoom`, `teams`, or `custom`
+</ParamField>
+
+<ParamField path="meetingLink" type="string">
+  URL for online meeting (required for online and hybrid events)
+</ParamField>
+
+<ParamField path="eventImageUrl" type="string">
+  URL to event image/banner
+</ParamField>
+
+<ParamField path="isRecurring" type="boolean" default="false">
+  Whether event recurs
+</ParamField>
+
+<ParamField path="recurrencePattern" type="string">
+  Recurrence pattern (e.g., "weekly", "monthly")
+</ParamField>
+
+<ParamField path="ticketTypes" type="string">
+  JSON string of ticket type configurations
+</ParamField>
+
+<ParamField path="partners" type="string">
+  JSON string of event partners/sponsors
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  Whether the event was created successfully
+</ResponseField>
+
+<ResponseField name="eventId" type="string">
+  ID of the created event
+</ResponseField>
+
+<ResponseField name="shortId" type="string">
+  6-character short ID for the event (e.g., `abc123`)
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if creation failed
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "eventId": "evt_a1b2c3d4e5f6",
+  "shortId": "abc123"
+}
+```
+
+## Event Types
+
+EventPalour supports three event types:
+
+<Tabs>
+  <Tab title="Physical">
+    In-person events at a physical location.
+    
+    **Required fields:**
+    - `venue`
+    - `country`
+    - `city`
+    
+    ```typescript
+    {
+      type: EventType.PHYSICAL,
+      venue: 'Conference Center',
+      country: 'Kenya',
+      city: 'Nairobi'
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Online">
+    Virtual events conducted online.
+    
+    **Required fields:**
+    - `meetingPlatform`
+    - `meetingLink`
+    
+    ```typescript
+    {
+      type: EventType.ONLINE,
+      meetingPlatform: 'zoom',
+      meetingLink: 'https://zoom.us/j/123456789'
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Hybrid">
+    Events with both physical and online components.
+    
+    **Required fields:**
+    - `venue`, `country`, `city`
+    - `meetingPlatform`, `meetingLink`
+    
+    ```typescript
+    {
+      type: EventType.HYBRID,
+      venue: 'Convention Center',
+      country: 'Kenya',
+      city: 'Nairobi',
+      meetingPlatform: 'zoom',
+      meetingLink: 'https://zoom.us/j/123456789'
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Pricing Models
+
+### Free Events
+
+Free events allow open registration without payment:
+
+```typescript
+{
+  pricing: EventPricing.FREE,
+  // No KYC required
+  // No ticket pricing needed
+}
+```
+
+### Paid Events
+
+Paid events require ticket purchases:
+
+```typescript
+{
+  pricing: EventPricing.PAID,
+  // KYC verification required for organizer
+  ticketTypes: JSON.stringify([
+    {
+      name: 'Early Bird',
+      price: 50.00,
+      currency: 'USD',
+      availability: 100
+    }
+  ])
+}
+```
+
+<Warning>
+**KYC Required:** Organizers must complete KYC verification before creating paid events. The API will return an error if KYC is not approved.
+</Warning>
+
+## Validation Rules
+
+The Events API validates:
+
+<AccordionGroup>
+  <Accordion title="Title Validation">
+    - **Required:** Cannot be empty
+    - **Length:** 1-255 characters
+    
+    ```typescript
+    title: z.string()
+      .min(1, "Title is required")
+      .max(255, "Title must be 255 characters or less")
+    ```
+  </Accordion>
+  
+  <Accordion title="Description Validation">
+    - **Required:** Cannot be empty
+    - **Length:** 10-5000 characters (plain text, excluding HTML tags)
+    - **Format:** HTML content
+    
+    ```typescript
+    description: z.string()
+      .refine(val => getPlainTextLength(val) >= 10)
+      .refine(val => getPlainTextLength(val) <= 5000)
+    ```
+  </Accordion>
+  
+  <Accordion title="Date Validation">
+    - **Start Date:** Required
+    - **End Date:** Required, must be after start date
+    - **Format:** ISO 8601 date string or Date object
+    
+    ```typescript
+    .refine(
+      (data) => data.endDate > data.startDate,
+      {
+        message: "End date must be after start date",
+        path: ["endDate"],
+      }
+    )
+    ```
+  </Accordion>
+  
+  <Accordion title="Type-Specific Validation">
+    **Physical Events:**
+    - Venue required
+    - Location (country, city) recommended
+    
+    **Online Events:**
+    - Meeting platform required
+    - Meeting link required and must be valid URL
+    
+    **Hybrid Events:**
+    - All physical AND online requirements
+  </Accordion>
+</AccordionGroup>
+
+## Event Categories
+
+Categories help organize events. You can:
+
+1. **Use existing category:**
+   ```typescript
+   { categoryId: 'existing_category_id' }
+   ```
+
+2. **Auto-create by name:**
+   ```typescript
+   { category: 'Technology' }  // Creates if doesn't exist
+   ```
+
+3. **Create custom category:**
+   ```typescript
+   { customCategory: 'AI & Machine Learning' }
+   ```
+
+## Event Status Management
+
+Events have four statuses:
+
+```typescript
+enum EventStatus {
+  ACTIVE = "active",        // Event is live and accepting registrations
+  INACTIVE = "inactive",    // Event is hidden/draft
+  CANCELED = "canceled",    // Event has been canceled
+  POSTPONED = "postponed"   // Event date postponed
+}
+```
+
+Default status is `ACTIVE`. Change status using `updateEvent()`.
+
+## Permissions Required
+
+<Note>
+**Minimum Role:** Moderator
+
+To create events, users must have at least **Moderator** role in the workspace.
+</Note>
+
+```typescript
+// Permission check (automatic in createEvent)
+const { workspace, role } = await validateWorkspaceAccess(
+  workspaceId,
+  WorkspaceRole.MODERATOR
+);
+```
+
+## Get Event Details
+
+Retrieve event information:
+
+```typescript
+import { getEventById } from '@/dal/events';
+
+const event = await getEventById('event_id');
+```
+
+<ResponseField name="id" type="string">
+  Unique event identifier
+</ResponseField>
+
+<ResponseField name="short_id" type="string">
+  6-character short ID
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Event title
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Event description (HTML)
+</ResponseField>
+
+<ResponseField name="status" type="EventStatus">
+  Current event status
+</ResponseField>
+
+<ResponseField name="type" type="EventType">
+  Event type (physical/online/hybrid)
+</ResponseField>
+
+<ResponseField name="pricing" type="EventPricing">
+  Pricing model (free/paid)
+</ResponseField>
+
+<ResponseField name="workspace_id" type="string">
+  ID of workspace that owns the event
+</ResponseField>
+
+<ResponseField name="start_date" type="Date">
+  Event start date and time
+</ResponseField>
+
+<ResponseField name="end_date" type="Date">
+  Event end date and time
+</ResponseField>
+
+<ResponseField name="venue" type="string | null">
+  Physical venue name
+</ResponseField>
+
+<ResponseField name="meeting_link" type="string | null">
+  Online meeting URL
+</ResponseField>
+
+<ResponseField name="created_at" type="Date">
+  Event creation timestamp
+</ResponseField>
+
+<ResponseField name="updated_at" type="Date">
+  Last update timestamp
+</ResponseField>
+
+## Error Handling
+
+Common event creation errors:
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `"Authentication required"` | No session | Sign in first |
+| `"Workspace not found"` | Invalid workspace ID | Verify workspace exists |
+| `"Only moderators and above can create events"` | Insufficient permissions | Upgrade role to Moderator |
+| `"KYC verification required for paid events"` | Organizer KYC not approved | Complete KYC process |
+| `"End date must be after start date"` | Invalid date range | Fix date values |
+| `"Description must be at least 10 characters"` | Description too short | Add more detail |
+
+## Complete Example
+
+Creating a hybrid event with tickets:
+
+```typescript
+import { createEvent } from '@/app/actions/events';
+import { EventType, EventPricing } from '@/lib/db/schema/enums';
+
+const ticketTypes = [
+  {
+    name: 'Early Bird',
+    price: 50.00,
+    currency: 'USD',
+    availability: 100,
+    valid_from: new Date('2024-01-01'),
+    valid_until: new Date('2024-03-01')
+  },
+  {
+    name: 'Regular',
+    price: 75.00,
+    currency: 'USD',
+    availability: 200,
+    valid_from: new Date('2024-03-01'),
+    valid_until: new Date('2024-06-01')
+  },
+  {
+    name: 'VIP',
+    price: 150.00,
+    currency: 'USD',
+    availability: 50
+  }
+];
+
+const result = await createEvent({
+  // Basic Info
+  title: 'East Africa Tech Summit 2024',
+  description: '<p>The largest technology conference in East Africa...</p>',
+  workspaceId: 'wks_abc123',
+  
+  // Event Type & Pricing
+  type: EventType.HYBRID,
+  pricing: EventPricing.PAID,
+  
+  // Physical Location
+  venue: 'Kenyatta International Convention Centre',
+  country: 'Kenya',
+  city: 'Nairobi',
+  
+  // Online Meeting
+  meetingPlatform: 'zoom',
+  meetingLink: 'https://zoom.us/j/987654321',
+  
+  // Dates
+  startDate: new Date('2024-06-15T09:00:00'),
+  endDate: new Date('2024-06-17T18:00:00'),
+  
+  // Category
+  category: 'Technology',
+  
+  // Image
+  eventImageUrl: 'https://storage.eventpalour.com/events/summit-2024.jpg',
+  
+  // Tickets
+  ticketTypes: JSON.stringify(ticketTypes),
+  
+  // Partners/Sponsors
+  partners: JSON.stringify([
+    {
+      name: 'TechCorp',
+      logo: 'https://example.com/logo.png',
+      website: 'https://techcorp.com'
+    }
+  ])
+});
+
+if (result.success) {
+  console.log('Event created:', result.eventId);
+  console.log('Short URL:', `https://eventpalour.com/events/${result.shortId}`);
+} else {
+  console.error('Failed to create event:', result.error);
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Tickets API" icon="ticket" href="/api/tickets">
+    Add and manage event tickets
+  </Card>
+  <Card title="Payments API" icon="credit-card" href="/api/payments">
+    Handle ticket payments
+  </Card>
+  <Card title="Workspaces API" icon="users" href="/api/workspaces">
+    Manage workspace settings
+  </Card>
+  <Card title="Event Management" icon="calendar" href="/features/event-management">
+    Learn about event features
+  </Card>
+</CardGroup>

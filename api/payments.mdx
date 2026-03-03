@@ -1,0 +1,647 @@
+---
+title: Payments API
+description: Process ticket payments, verify transactions, and handle webhooks
+---
+
+## Overview
+
+The Payments API handles ticket payment processing through multiple payment providers (Paystack, Stripe, M-Pesa), including payment initialization, verification, and webhook handling for automated payment confirmation.
+
+## Initiate Payment
+
+Start a payment for ticket purchase.
+
+```typescript
+import { initiatePayment } from '@/app/actions/payments';
+
+const result = await initiatePayment({
+  eventId: 'evt_abc123',
+  tickets: [
+    { ticketId: 'tkt_early_bird', quantity: 2 },
+    { ticketId: 'tkt_vip', quantity: 1 }
+  ],
+  provider: 'paystack'
+});
+
+if (result.success) {
+  // Redirect to payment page
+  window.location.href = result.authorizationUrl;
+}
+```
+
+### Parameters
+
+<ParamField path="eventId" type="string" required>
+  ID of the event to purchase tickets for
+</ParamField>
+
+<ParamField path="tickets" type="array" required>
+  Array of ticket selections. Each item contains:
+  - `ticketId` (string): ID of the ticket type
+  - `quantity` (number): Number of tickets (minimum 1)
+</ParamField>
+
+<ParamField path="provider" type="string" default="paystack">
+  Payment provider: `paystack`, `stripe`, or `mpesa`
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  Whether payment was initiated successfully
+</ResponseField>
+
+<ResponseField name="paymentId" type="string">
+  Unique payment identifier
+</ResponseField>
+
+<ResponseField name="reference" type="string">
+  Payment reference (e.g., `EVT-abc123`)
+</ResponseField>
+
+<ResponseField name="authorizationUrl" type="string">
+  URL to redirect user for payment completion
+</ResponseField>
+
+<ResponseField name="buyerEmail" type="string">
+  Email address of the buyer
+</ResponseField>
+
+<ResponseField name="totalAmount" type="string">
+  Total amount to be charged (as decimal string)
+</ResponseField>
+
+<ResponseField name="currency" type="string">
+  Payment currency (KES, USD, NGN, GHS, ZAR)
+</ResponseField>
+
+<ResponseField name="paystackPublicKey" type="string">
+  Paystack public key (only for Paystack payments)
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if initiation failed
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "paymentId": "pay_xyz789",
+  "reference": "EVT-xyz789",
+  "authorizationUrl": "https://checkout.paystack.com/abc123",
+  "buyerEmail": "user@example.com",
+  "totalAmount": "150.00",
+  "currency": "KES",
+  "paystackPublicKey": "pk_test_..."
+}
+```
+
+## Payment Initialization Flow
+
+<Steps>
+  <Step title="Authentication & Validation">
+    - User must be authenticated
+    - Event must exist and be active
+    - All ticket types must belong to the event
+  </Step>
+  
+  <Step title="Availability Check">
+    For each ticket type, verify availability:
+    
+    ```typescript
+    const purchasedCount = await db
+      .select({ count: sum(tables.purchased_tickets.quantity) })
+      .from(tables.purchased_tickets)
+      .where(eq(tables.purchased_tickets.ticket_id, ticket.id));
+    
+    const remaining = ticket.availability_quantity - totalPurchased;
+    
+    if (quantity > remaining) {
+      return { error: `Only ${remaining} tickets remaining` };
+    }
+    ```
+  </Step>
+  
+  <Step title="Fee Calculation">
+    Calculate payment breakdown:
+    
+    ```typescript
+    const breakdown = calculatePaymentBreakdown(
+      totalAmount,
+      provider,
+      currency
+    );
+    
+    // Returns:
+    // - totalAmount: Amount paid by buyer
+    // - platformFee: EventPalour commission (5%)
+    // - providerFee: Payment gateway fee
+    // - organizerShare: Amount organizer receives
+    ```
+  </Step>
+  
+  <Step title="Payment Record Creation">
+    Create payment record in database:
+    
+    ```typescript
+    await db.insert(tables.payments).values({
+      id: paymentId,
+      provider: 'paystack',
+      provider_reference: reference,
+      status: PaymentStatus.PENDING,
+      amount: breakdown.totalAmount,
+      platform_fee: breakdown.platformFee,
+      provider_fee: breakdown.providerFee,
+      organizer_share: breakdown.organizerShare,
+      metadata: JSON.stringify({ eventId, tickets })
+    });
+    ```
+  </Step>
+  
+  <Step title="Provider Initialization">
+    Initialize payment with the selected provider (Paystack, Stripe, or M-Pesa).
+  </Step>
+</Steps>
+
+## Fee Structure
+
+EventPalour uses transparent fee calculation:
+
+### Platform Commission
+
+<Note>
+**5% Platform Fee:** EventPalour charges a flat 5% commission on all ticket sales. This is competitive compared to other platforms:
+- Eventbrite: 2.9% + $0.99 per ticket
+- Ticketmaster: 10-15% + fees
+</Note>
+
+```typescript
+const PLATFORM_COMMISSION_RATE = 0.05; // 5%
+```
+
+### Payment Provider Fees
+
+<Tabs>
+  <Tab title="Paystack">
+    **Paystack Fee Structure:**
+    - **1.5%** transaction fee
+    - **+ Fixed fee** based on currency:
+      - KES: + 20 KES
+      - USD: + $0.20
+      - NGN: + 20 NGN
+    
+    ```typescript
+    function calculatePaystackFee(amount, currency) {
+      const percentage = 0.015; // 1.5%
+      const flatFee = currency === 'KES' ? 20 : 
+                      currency === 'USD' ? 0.2 : 20;
+      
+      return (amount * percentage) + flatFee;
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Stripe">
+    **Stripe Fee Structure:**
+    - **2.9%** transaction fee
+    - **+ $0.30** fixed fee
+    
+    ```typescript
+    function calculateStripeFee(amount) {
+      return (amount * 0.029) + 0.30;
+    }
+    ```
+  </Tab>
+  
+  <Tab title="M-Pesa">
+    **M-Pesa Fee Structure:**
+    
+    Tiered based on transaction amount:
+    - 0-100 KES: Free
+    - 101-500 KES: 5 KES
+    - 501-1,000 KES: 10 KES
+    - 1,001-5,000 KES: 25 KES
+    - 5,001-10,000 KES: 50 KES
+    - >10,000 KES: 0.5% (max 200 KES)
+  </Tab>
+</Tabs>
+
+### Fee Calculation Example
+
+For a 1,000 KES ticket purchase via Paystack:
+
+```typescript
+const ticketPrice = 1000; // KES
+
+// Platform fee (5%)
+const platformFee = 1000 * 0.05 = 50 // KES
+
+// Amount after platform fee
+const afterPlatformFee = 1000 - 50 = 950 // KES
+
+// Paystack fee (1.5% + 20 KES)
+const paystackFee = (950 * 0.015) + 20 = 34.25 // KES
+
+// Organizer receives
+const organizerShare = 950 - 34.25 = 915.75 // KES
+```
+
+**Breakdown:**
+- Buyer pays: **1,000 KES**
+- Platform fee: **50 KES** (5%)
+- Paystack fee: **34.25 KES** (1.5% + 20)
+- Organizer receives: **915.75 KES** (91.6%)
+
+## Verify Payment
+
+Verify and complete a payment after user completes checkout.
+
+```typescript
+import { verifyAndCompletePayment } from '@/app/actions/payments';
+
+const result = await verifyAndCompletePayment('EVT-xyz789');
+
+if (result.success) {
+  console.log('Payment verified and tickets issued');
+}
+```
+
+### Parameters
+
+<ParamField path="reference" type="string" required>
+  Payment reference returned from `initiatePayment`
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  Whether payment was verified successfully
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if verification failed
+</ResponseField>
+
+### Verification Process
+
+<Steps>
+  <Step title="Find Payment Record">
+    Look up payment by reference in database.
+  </Step>
+  
+  <Step title="Check Status">
+    If already completed, return success immediately.
+  </Step>
+  
+  <Step title="Verify with Provider">
+    Call payment provider API to verify transaction:
+    
+    ```typescript
+    const verification = await paymentProvider.verifyPayment(reference);
+    ```
+  </Step>
+  
+  <Step title="Update Payment Status">
+    ```typescript
+    await db.update(tables.payments).set({
+      status: verification.status,
+      completed_at: new Date()
+    });
+    ```
+  </Step>
+  
+  <Step title="Create Purchased Tickets">
+    If payment is completed, create ticket records:
+    
+    ```typescript
+    for (const ticket of metadata.tickets) {
+      for (let i = 0; i < ticket.quantity; i++) {
+        await db.insert(tables.purchased_tickets).values({
+          user_id: payment.buyer_id,
+          ticket_id: ticket.ticketId,
+          status: TicketStatus.SOLD,
+          price: ticket.price,
+          quantity: 1
+        });
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Send Confirmation Email">
+    Email includes:
+    - Ticket details and QR codes
+    - Event information
+    - Payment receipt
+    - Calendar invite
+  </Step>
+</Steps>
+
+## Cancel Payment
+
+Cancel a pending payment.
+
+```typescript
+import { cancelPayment } from '@/app/actions/payments';
+
+const result = await cancelPayment('EVT-xyz789');
+```
+
+### Parameters
+
+<ParamField path="reference" type="string" required>
+  Payment reference to cancel
+</ParamField>
+
+### Cancellation Rules
+
+- Only payments with status `PENDING` or `PROCESSING` can be cancelled
+- Completed, failed, or refunded payments cannot be cancelled
+- Cancellation updates status to `CANCELLED` with reason "Payment cancelled by user"
+
+```typescript
+if (
+  payment.status === PaymentStatus.PENDING ||
+  payment.status === PaymentStatus.PROCESSING
+) {
+  await db.update(tables.payments).set({
+    status: PaymentStatus.CANCELLED,
+    failure_reason: 'Payment cancelled by user'
+  });
+}
+```
+
+## Payment Webhook
+
+Handle payment provider webhooks for automatic payment confirmation.
+
+```typescript
+POST /api/payments/webhook/paystack
+```
+
+### Webhook Security
+
+Webhooks are verified using HMAC signature:
+
+```typescript
+import crypto from 'crypto';
+
+// Verify webhook signature
+const signature = req.headers.get('x-paystack-signature');
+const secretKey = process.env.PAYSTACK_SECRET_KEY;
+
+const hash = crypto
+  .createHmac('sha512', secretKey)
+  .update(body)
+  .digest('hex');
+
+if (hash !== signature) {
+  return { error: 'Invalid signature' };
+}
+```
+
+<Warning>
+**Always Verify Signatures:** Never process webhooks without verifying the signature. This prevents fraudulent payment confirmations.
+</Warning>
+
+### Webhook Events
+
+<Tabs>
+  <Tab title="charge.success">
+    Payment completed successfully:
+    
+    ```typescript
+    {
+      "event": "charge.success",
+      "data": {
+        "reference": "EVT-xyz789",
+        "status": "success",
+        "amount": 100000, // Amount in kobo (1000 KES)
+        "currency": "KES"
+      }
+    }
+    ```
+    
+    Action: Verify and complete payment, issue tickets.
+  </Tab>
+  
+  <Tab title="charge.failed">
+    Payment failed:
+    
+    ```typescript
+    {
+      "event": "charge.failed",
+      "data": {
+        "reference": "EVT-xyz789",
+        "status": "failed"
+      }
+    }
+    ```
+    
+    Action: Update payment status to FAILED.
+  </Tab>
+</Tabs>
+
+### Webhook Response
+
+Always return 200 status to prevent retries:
+
+```typescript
+return NextResponse.json({
+  received: true,
+  message: 'Payment processed successfully'
+});
+```
+
+## Payment Statuses
+
+Payments progress through various statuses:
+
+```typescript
+enum PaymentStatus {
+  PENDING = "pending",         // Awaiting payment
+  PROCESSING = "processing",   // Payment in progress
+  COMPLETED = "completed",     // Payment successful
+  FAILED = "failed",           // Payment failed
+  CANCELLED = "cancelled",     // Cancelled by user
+  REFUNDED = "refunded"        // Payment refunded
+}
+```
+
+## Supported Currencies
+
+EventPalour supports multiple currencies:
+
+```typescript
+type SupportedCurrency = 'KES' | 'USD' | 'NGN' | 'GHS' | 'ZAR';
+```
+
+- **KES** - Kenyan Shilling
+- **USD** - US Dollar
+- **NGN** - Nigerian Naira
+- **GHS** - Ghanaian Cedi
+- **ZAR** - South African Rand
+
+<Note>
+Currency is determined by the ticket configuration. All tickets for a single purchase must use the same currency.
+</Note>
+
+## Refund Processing
+
+Refunds update the payment status and ticket records:
+
+```typescript
+// Update payment
+await db.update(tables.payments).set({
+  status: PaymentStatus.REFUNDED,
+  refunded_at: new Date()
+});
+
+// Update tickets
+await db.update(tables.purchased_tickets).set({
+  status: TicketStatus.REFUNDED
+}).where(eq(tables.purchased_tickets.payment_id, paymentId));
+```
+
+<Warning>
+**Manual Process:** Refunds must be processed manually through the payment provider's dashboard. The API only updates internal records.
+</Warning>
+
+## Error Handling
+
+Common payment errors:
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `"Authentication required"` | User not signed in | Sign in before purchasing |
+| `"Event not found"` | Invalid event ID | Verify event exists |
+| `"Invalid ticket"` | Ticket doesn't belong to event | Check ticket IDs |
+| `"Only X tickets remaining"` | Insufficient availability | Reduce quantity |
+| `"Failed to initialize payment"` | Provider error | Try again or use different provider |
+| `"Payment not found"` | Invalid reference | Verify payment reference |
+| `"Invalid signature"` | Webhook verification failed | Check webhook secret key |
+
+## Complete Payment Example
+
+Complete payment flow with error handling:
+
+```typescript
+import { 
+  initiatePayment, 
+  verifyAndCompletePayment 
+} from '@/app/actions/payments';
+
+async function purchaseTickets(
+  eventId: string,
+  tickets: Array<{ ticketId: string; quantity: number }>
+) {
+  // 1. Initiate payment
+  const initResult = await initiatePayment({
+    eventId,
+    tickets,
+    provider: 'paystack'
+  });
+  
+  if (!initResult.success) {
+    console.error('Payment initiation failed:', initResult.error);
+    return;
+  }
+  
+  console.log('Payment initiated:', initResult.reference);
+  console.log('Amount:', initResult.totalAmount, initResult.currency);
+  
+  // 2. Redirect to payment page
+  window.location.href = initResult.authorizationUrl!;
+  
+  // 3. After redirect back (on callback page)
+  // Get reference from URL params
+  const urlParams = new URLSearchParams(window.location.search);
+  const reference = urlParams.get('reference');
+  
+  if (!reference) {
+    console.error('No payment reference in URL');
+    return;
+  }
+  
+  // 4. Verify payment
+  const verifyResult = await verifyAndCompletePayment(reference);
+  
+  if (!verifyResult.success) {
+    console.error('Payment verification failed:', verifyResult.error);
+    // Show error to user
+    return;
+  }
+  
+  console.log('Payment successful! Tickets issued.');
+  // Redirect to tickets page
+  window.location.href = '/dashboard/tickets';
+}
+```
+
+## Payment Metadata
+
+Payments store metadata for ticket creation:
+
+```typescript
+interface PaymentMetadata {
+  eventId: string;
+  tickets: Array<{
+    ticketId: string;
+    quantity: number;
+    price: string;
+  }>;
+}
+
+// Stored as JSON string in database
+metadata: JSON.stringify({
+  eventId: 'evt_abc123',
+  tickets: [
+    { ticketId: 'tkt_123', quantity: 2, price: '50.00' },
+    { ticketId: 'tkt_456', quantity: 1, price: '100.00' }
+  ]
+});
+```
+
+This metadata is used during payment verification to create the correct ticket records.
+
+## Revenue Calculations
+
+Calculate organizer revenue:
+
+```typescript
+import { calculatePaymentBreakdown } from '@/lib/payments/decimal';
+
+const breakdown = calculatePaymentBreakdown(
+  '1000.00', // Total amount
+  'paystack',
+  'KES'
+);
+
+console.log('Total:', breakdown.totalAmount);
+console.log('Platform fee:', breakdown.platformFee);
+console.log('Provider fee:', breakdown.providerFee);
+console.log('Organizer receives:', breakdown.organizerShare);
+```
+
+<Note>
+**Decimal Precision:** All monetary values are handled as decimal strings to avoid floating-point precision errors. Never use JavaScript numbers for money calculations.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Tickets API" icon="ticket" href="/api/tickets">
+    Manage purchased tickets
+  </Card>
+  <Card title="Events API" icon="calendar" href="/api/events">
+    Create ticketed events
+  </Card>
+  <Card title="Payment Providers" icon="credit-card" href="/integrations/payment-providers">
+    Configure Paystack, Stripe, M-Pesa
+  </Card>
+  <Card title="Revenue Management" icon="chart-line" href="/features/revenue-management">
+    Track earnings and payouts
+  </Card>
+</CardGroup>
