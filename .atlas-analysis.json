@@ -1,0 +1,139 @@
+{
+  "projectType": "saas",
+  "projectName": "EventPalour",
+  "projectDescription": "A modern event management platform for creating, managing, and monetizing events with integrated ticketing and payments.",
+  "theme": "palm",
+  "primaryColor": "#7C3AED",
+  "lightColor": "#A78BFA",
+  "darkColor": "#5B21B6",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/workspaces",
+              "concepts/events",
+              "concepts/tickets",
+              "concepts/roles-permissions"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/authentication",
+              "features/event-management",
+              "features/ticketing",
+              "features/payments",
+              "features/analytics",
+              "features/channels",
+              "features/speakers"
+            ]
+          },
+          {
+            "group": "Workspace Management",
+            "pages": [
+              "workspace/creating-workspace",
+              "workspace/team-collaboration",
+              "workspace/settings",
+              "workspace/billing"
+            ]
+          },
+          {
+            "group": "Event Organizers",
+            "pages": [
+              "organizers/creating-events",
+              "organizers/ticket-types",
+              "organizers/pricing-strategies",
+              "organizers/attendee-management",
+              "organizers/kyc-verification"
+            ]
+          },
+          {
+            "group": "Attendees",
+            "pages": [
+              "attendees/browsing-events",
+              "attendees/purchasing-tickets",
+              "attendees/ticket-management"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/introduction",
+              "api/authentication",
+              "api/errors"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/events",
+              "api/tickets",
+              "api/workspaces",
+              "api/payments",
+              "api/users"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Admin",
+        "groups": [
+          {
+            "group": "Platform Administration",
+            "pages": [
+              "admin/overview",
+              "admin/user-management",
+              "admin/kyc-approval",
+              "admin/revenue-management",
+              "admin/audit-logs",
+              "admin/security"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-workspace event management",
+    "Integrated ticketing system with multiple ticket types",
+    "Paystack payment integration",
+    "Role-based access control (platform admin, workspace admin, moderator, member)",
+    "KYC verification for organizers",
+    "Real-time analytics and reporting",
+    "Event channels and announcements",
+    "Speaker management",
+    "OAuth authentication (Google, GitHub)",
+    "Two-factor authentication (2FA)",
+    "Email notifications and templating",
+    "Ticket reservations and transfers",
+    "Revenue tracking and billing",
+    "Platform admin dashboard"
+  ],
+  "publicApiSurface": [
+    "POST /api/auth/sign-in",
+    "POST /api/auth/sign-up",
+    "GET /api/events",
+    "POST /api/events",
+    "GET /api/tickets",
+    "POST /api/payments",
+    "GET /api/workspace",
+    "POST /api/workspace"
+  ]
+}
