@@ -14,10 +14,10 @@ EventPalour is a comprehensive event management platform built for event organiz
   <Card title="Installation" icon="code" href="/installation">
     Set up your local development environment
   </Card>
-  <Card title="API Reference" icon="book" href="/api-reference">
+  <Card title="API Reference" icon="book" href="/api/introduction">
     Explore our comprehensive API documentation
   </Card>
-  <Card title="Authentication" icon="shield" href="/authentication">
+  <Card title="Authentication" icon="shield" href="/features/authentication">
     Learn about OAuth, 2FA, and security features
   </Card>
 </CardGroup>
@@ -67,7 +67,7 @@ export enum EventPricing {
 
 ### Secure Authentication
 
-Built-in support for OAuth (Google, GitHub), email/password authentication, and two-factor authentication.
+Built-in support for OAuth (Google), email/password authentication, and two-factor authentication.
 
 ```typescript
 // User authentication schema from lib/db/schema/user.ts
@@ -123,7 +123,7 @@ export const tickets = pgTable("tickets", {
     Secure payment processing for paid events
   </Card>
   <Card title="OAuth 2.0" icon="key">
-    Google and GitHub authentication support
+    Google authentication support
   </Card>
   <Card title="Tailwind CSS" icon="palette">
     Modern, responsive UI design
